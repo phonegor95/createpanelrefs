@@ -84,7 +84,7 @@ workflow {
         ? channel.fromPath(params.gcnv_exclude_interval_list).map { exclude -> [[id: 'genome'], exclude] }.collect()
         : channel.value([[id: 'genome'], []])
     gcnv_mappable_regions = params.gcnv_mappable_regions
-        ? channel.fromPath(params.gcnv_mappable_regions).collect()
+        ? channel.fromPath(params.gcnv_mappable_regions).map { it -> [[id: 'genome'], it] }.collect()
         : channel.value([[id: 'genome'], []])
     gcnv_ploidy_priors = params.gcnv_ploidy_priors
         ? channel.fromPath(params.gcnv_ploidy_priors).collect()
@@ -96,7 +96,7 @@ workflow {
         ? channel.fromPath(params.gcnv_target_interval_list).map { targets -> [[id: 'genome'], targets] }.collect()
         : channel.value([[id: 'genome'], []])
     gcnv_segmental_duplications = params.gcnv_segmental_duplications
-        ? channel.fromPath(params.gcnv_segmental_duplications).collect()
+        ? channel.fromPath(params.gcnv_segmental_duplications).map { it -> [[id: 'genome'], it] }.collect()
         : channel.value([[id: 'genome'], []])
 
     // Initialize mutect2 specific parameters

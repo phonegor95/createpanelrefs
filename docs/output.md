@@ -40,10 +40,16 @@ The reference file contains coverage information normalized across the cohort an
 <summary>Output files</summary>
 
 - `results/germlinecnvcaller/`
-  - `determinecontigploidy`
+  - `determinegermlinecontigploidy`
     - `cohort-model`: Contig ploidy model.
+    - `cohort-calls`: Contig ploidy calls for all cohort samples.
   - `germlinecnvcaller`
     - `*_model`: CNV caller model for each scattered shard.
+  - `postprocess`
+    - `{sample}/`
+      - `*.genotyped_intervals.vcf.gz`: Per-sample interval-level genotyped CNV calls.
+      - `*.genotyped_segments.vcf.gz`: Per-sample segment-level genotyped CNV calls.
+      - `*.denoised_copy_ratios.tsv`: Per-sample denoised copy-ratio table.
   - `readcounts`
     - `*.hdf5|.tsv`: Read count statistics for each sample.
   - `references`

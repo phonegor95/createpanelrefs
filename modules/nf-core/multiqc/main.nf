@@ -3,7 +3,7 @@ process MULTIQC {
     label 'process_single'
 
     conda "${moduleDir}/environment.yml"
-    container "${workflow.containerEngine in ['singularity', 'apptainer'] && !task.ext.singularity_pull_docker_container
+    container "${workflow.containerEngine in ['singularity', 'apptainer']
         ? 'https://community-cr-prod.seqera.io/docker/registry/v2/blobs/sha256/12/1297c0f5075c19486da167ebf1b6136907d6b5339697b87b29fda335221785b3/data'
         : 'community.wave.seqera.io/library/multiqc:1.35--839587b417d23042'}"
 

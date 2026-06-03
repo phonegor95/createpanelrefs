@@ -3,12 +3,12 @@ process GATK4_GERMLINECNVCALLER {
     label 'process_single'
 
     conda "${moduleDir}/environment.yml"
-    container "${workflow.containerEngine in ['singularity', 'apptainer'] && !task.ext.singularity_pull_docker_container
+    container "${workflow.containerEngine in ['singularity', 'apptainer']
         ? 'https://community-cr-prod.seqera.io/docker/registry/v2/blobs/sha256/ce/ced519873646379e287bc28738bdf88e975edd39a92e7bc6a34bccd37153d9d0/data'
         : 'community.wave.seqera.io/library/gatk4_gcnvkernel:edb12e4f0bf02cd3'}"
 
     input:
-    tuple val(meta), path(tsv), path(intervals), path(ploidy), path(model)
+    tuple val(meta), path(tsv), path(intervals), path(ploidy), path(model), path(annotated_intervals)
 
     output:
     tuple val(meta), path("*-cnv-model/*-calls"), emit: cohortcalls, optional: true
@@ -25,6 +25,7 @@ process GATK4_GERMLINECNVCALLER {
     def intervals_command = intervals ? "--intervals ${intervals}" : ""
     def ploidy_command = ploidy ? "--contig-ploidy-calls ${ploidy}" : ""
     def model_command = model ? "--model ${model}" : ""
+    def annotated_intervals_command = annotated_intervals ? "--annotated-intervals ${annotated_intervals}" : ""
     def input_list = tsv.collect { tsv_ -> "--input ${tsv_}" }.join(' ')
     def output_command = model ? "--output ${prefix}-cnv-calls" : "--output ${prefix}-cnv-model"
 
@@ -49,6 +50,7 @@ process GATK4_GERMLINECNVCALLER {
         --output-prefix ${prefix} \\
         ${args} \\
         ${intervals_command} \\
+        ${annotated_intervals_command} \\
         ${model_command}
     """
 

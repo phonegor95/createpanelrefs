@@ -8,6 +8,7 @@ include { GATK4_GERMLINECNVCALLER                                      } from '.
 include { GATK4_INDEXFEATUREFILE as GATK4_INDEXFEATUREFILE_MAPPABILITY } from '../../../modules/nf-core/gatk4/indexfeaturefile'
 include { GATK4_INDEXFEATUREFILE as GATK4_INDEXFEATUREFILE_SEGDUP      } from '../../../modules/nf-core/gatk4/indexfeaturefile'
 include { GATK4_INTERVALLISTTOOLS                                      } from '../../../modules/nf-core/gatk4/intervallisttools'
+include { GATK4_POSTPROCESSGERMLINECNVCALLS                            } from '../../../modules/nf-core/gatk4/postprocessgermlinecnvcalls'
 include { GATK4_PREPROCESSINTERVALS                                    } from '../../../modules/nf-core/gatk4/preprocessintervals'
 include { SAMTOOLS_INDEX                                               } from '../../../modules/nf-core/samtools/index'
 
@@ -144,13 +145,58 @@ workflow GERMLINECNVCALLER_COHORT {
     ch_readcounts_out
         .combine(ch_intervallist_out)
         .combine(GATK4_DETERMINEGERMLINECONTIGPLOIDY.out.calls)
-        .map { meta, counts, il, _meta2, calls -> [meta + [id: il.baseName], counts, il, calls, []] }
+        .combine(GATK4_ANNOTATEINTERVALS.out.annotated_intervals)
+        .map { meta, counts, il, _meta2, calls, _meta3, annotated_intervals -> [meta + [id: il.baseName], counts, il, calls, [], annotated_intervals] }
         .set { ch_cnvcaller_in }
 
     GATK4_GERMLINECNVCALLER(ch_cnvcaller_in)
 
+    GATK4_GERMLINECNVCALLER.out.cohortmodel
+        .map { _meta, model_dir -> model_dir }
+        .collect()
+        .map { model_dirs -> [model_shards: model_dirs] }
+        .set { ch_gcnv_model_shards }
+
+    GATK4_GERMLINECNVCALLER.out.cohortcalls
+        .map { _meta, calls_dir -> calls_dir }
+        .collect()
+        .map { call_dirs -> [call_shards: call_dirs] }
+        .set { ch_gcnv_call_shards }
+
+    GATK4_DETERMINEGERMLINECONTIGPLOIDY.out.calls
+        .flatMap { _meta, ploidy_calls ->
+            def sample_dirs = ploidy_calls.toFile()
+                .listFiles()
+                .findAll { it.isDirectory() && it.name.startsWith('SAMPLE_') }
+                .sort { a, b -> (a.name - 'SAMPLE_') as Integer <=> (b.name - 'SAMPLE_') as Integer }
+            sample_dirs.collect { sample_dir ->
+                def sample_index = (sample_dir.name - 'SAMPLE_') as Integer
+                def sample_name = new File(sample_dir, 'sample_name.txt').text.trim()
+                [[id: sample_name, sample_index: sample_index], ploidy_calls, sample_index]
+            }
+        }
+        .combine(ch_gcnv_model_shards)
+        .combine(ch_gcnv_call_shards)
+        .combine(ch_dict)
+        .map { row ->
+            def meta = row[0]
+            def ploidy_calls = row[1]
+            def sample_index = row[2]
+            def model_shards = row[3].model_shards
+            def call_shards = row[4].call_shards
+            def dict_file = row[6]
+            [meta, model_shards, call_shards, ploidy_calls, dict_file, sample_index]
+        }
+        .set { ch_postprocess_in }
+
+    GATK4_POSTPROCESSGERMLINECNVCALLS(ch_postprocess_in)
+
     emit:
-    cnvmodel    = GATK4_GERMLINECNVCALLER.out.cohortmodel
-    ploidymodel = GATK4_DETERMINEGERMLINECONTIGPLOIDY.out.model
-    readcounts  = ch_readcounts_out
+    cnvmodel             = GATK4_GERMLINECNVCALLER.out.cohortmodel
+    ploidymodel          = GATK4_DETERMINEGERMLINECONTIGPLOIDY.out.model
+    ploidycalls          = GATK4_DETERMINEGERMLINECONTIGPLOIDY.out.calls
+    readcounts           = ch_readcounts_out
+    genotyped_intervals  = GATK4_POSTPROCESSGERMLINECNVCALLS.out.genotyped_intervals
+    genotyped_segments   = GATK4_POSTPROCESSGERMLINECNVCALLS.out.genotyped_segments
+    denoised_copy_ratios = GATK4_POSTPROCESSGERMLINECNVCALLS.out.denoised_copy_ratios
 }

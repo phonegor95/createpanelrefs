@@ -44,6 +44,10 @@ input:
         description: Optional - directory containing the model produced by germlinecnvcaller
           cohort mode
         pattern: "*-cnv-model/*-model"
+    - annotated_intervals:
+        type: file
+        description: Optional - annotated intervals file used as covariates
+        pattern: "*.tsv"
 output:
   cohortcalls:
     - - meta:

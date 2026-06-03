@@ -1,0 +1,76 @@
+name: "gatk4_postprocessgermlinecnvcalls"
+description: Postprocesses GermlineCNVCaller cohort shard outputs into per-sample genotyped interval and segment VCFs.
+keywords:
+  - gatk4
+  - postprocessgermlinecnvcalls
+  - cnv
+  - germline
+tools:
+  - gatk4:
+      description: |
+        Developed in the Data Sciences Platform at the Broad Institute, the toolkit offers a wide variety of tools
+        with a primary focus on variant discovery and genotyping. Its powerful processing engine
+        and high-performance computing features make it capable of taking on projects of any size.
+      homepage: https://gatk.broadinstitute.org/hc/en-us
+      documentation: https://gatk.broadinstitute.org/hc/en-us/articles/360037593411-PostprocessGermlineCNVCalls
+      doi: "10.1158/1538-7445.AM2017-3590"
+      licence: ["Apache-2.0"]
+      identifier: ""
+input:
+  - - meta:
+        type: map
+        description: |
+          Groovy Map containing sample information
+          e.g. [ id:'sample1', sample_index:0 ]
+    - model_shards:
+        type: directory
+        description: One or more GermlineCNVCaller shard model directories
+        pattern: "*-scattered-model"
+    - call_shards:
+        type: directory
+        description: One or more GermlineCNVCaller shard call directories
+        pattern: "*-scattered-calls"
+    - ploidy_calls:
+        type: directory
+        description: Directory containing DetermineGermlineContigPloidy calls
+        pattern: "*-calls"
+    - dict:
+        type: file
+        description: Sequence dictionary
+        pattern: "*.dict"
+    - sample_index:
+        type: integer
+        description: Zero-based sample index corresponding to SAMPLE_<index> in the ploidy/call directories
+output:
+  genotyped_intervals:
+    - - meta:
+          type: map
+      - "${prefix}.genotyped_intervals.vcf.gz":
+          type: file
+          description: Per-sample interval-level genotyped CNV VCF
+          pattern: "*.genotyped_intervals.vcf.gz"
+  genotyped_segments:
+    - - meta:
+          type: map
+      - "${prefix}.genotyped_segments.vcf.gz":
+          type: file
+          description: Per-sample segment-level genotyped CNV VCF
+          pattern: "*.genotyped_segments.vcf.gz"
+  denoised_copy_ratios:
+    - - meta:
+          type: map
+      - "${prefix}.denoised_copy_ratios.tsv":
+          type: file
+          description: Per-sample denoised copy-ratio table
+          pattern: "*.denoised_copy_ratios.tsv"
+  versions:
+    - versions.yml:
+        type: file
+        description: File containing software versions
+        pattern: "versions.yml"
+        ontologies:
+          - edam: http://edamontology.org/format_3750
+authors:
+  - "@openai"
+maintainers:
+  - "@openai"
