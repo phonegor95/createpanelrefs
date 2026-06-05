@@ -116,10 +116,21 @@ workflow GERMLINECNVCALLER_COHORT {
         ch_dict,
     )
 
+    // Sort the read-count files by sample id so every scattered GermlineCNVCaller
+    // receives them in an identical order. The per-shard sample order must match
+    // across all shards, otherwise PostprocessGermlineCNVCalls rejects them with
+    // "The sample name is not the same for all of the shards". Upstream
+    // createpanelrefs stops at the cohort model and never needs this; our
+    // postprocess fan-out does.
     GATK4_COLLECTREADCOUNTS.out.tsv
         .mix(GATK4_COLLECTREADCOUNTS.out.hdf5)
-        .collect { _meta, file -> [file] }
-        .map { tsv -> [[id: val_pon_name], tsv] }
+        .collect { row -> [sample_id: row[0].id, count_file: row[1]] }
+        .map { rows ->
+            def sorted_counts = rows
+                .sort { a, b -> a.sample_id <=> b.sample_id }
+                .collect { it.count_file }
+            [[id: val_pon_name], sorted_counts]
+        }
         .set { ch_readcounts_out }
 
 
