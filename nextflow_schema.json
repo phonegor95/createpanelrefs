@@ -361,6 +361,12 @@
                     "description": "Common-SNP sites VCF (e.g. 1000G high-confidence SNPs) for allelic LOH confirmation of PASS deletions via CollectAllelicCounts. If unset, the allelic LOH step is skipped.",
                     "fa_icon": "fas fa-dna"
                 },
+                "allelic_loh_hard_filter": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "Hard-remove CN=1 deletions that retain heterozygosity (no_LOH) from the annotated call set. Segmental-duplication-overlapping calls are exempt (LOH test invalid there). When false, no_LOH calls are only soft-flagged.",
+                    "fa_icon": "fas fa-filter"
+                },
                 "gatk_container": {
                     "type": "string",
                     "description": "Override the GATK container with a site-local Singularity image (.sif) path to avoid a biocontainer pull (used by the allelic LOH step).",

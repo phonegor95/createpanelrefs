@@ -264,15 +264,19 @@ workflow GERMLINECNVCALLER_COHORT {
                          file(params.allelic_snp_vcf + '.tbi', checkIfExists: true)])
         : Channel.value([[], []])
 
-    ALLELIC_LOH(ch_loh_in, ch_fasta, ch_fai, ch_dict, ch_snp_loh)
+    ch_loh_segdup = ch_segmental_duplications.map { _meta, bed -> bed }.ifEmpty([]).first()
 
-    // ---- Per-sample AnnotSV annotation of the PASS survivors ----------------
-    // Re-derive a per-sample meta from each PASS file name so AnnotSV fans out
-    // one task per sample. Gated on params.annotsv_annotations being set.
-    ch_annotsv_in = COHORT_RECURRENCE_FILTER.out.pass
-        .map { _meta, files -> files instanceof List ? files : [files] }
-        .flatten()
-        .map { f -> [[id: f.name.replaceAll(/\.recurfilt\.pass\.vcf\.gz$/, '')], f] }
+    ALLELIC_LOH(ch_loh_in, ch_fasta, ch_fai, ch_dict, ch_snp_loh, ch_loh_segdup)
+
+    // ---- Per-sample AnnotSV annotation of the survivors ---------------------
+    // When allelic LOH ran, annotate its hard-filtered output (no_LOH deletions
+    // removed); otherwise annotate the recurrence-filter PASS calls directly.
+    ch_annotsv_in = params.allelic_snp_vcf
+        ? ALLELIC_LOH.out.lohpass
+        : COHORT_RECURRENCE_FILTER.out.pass
+            .map { _meta, files -> files instanceof List ? files : [files] }
+            .flatten()
+            .map { f -> [[id: f.name.replaceAll(/\.recurfilt\.pass\.vcf\.gz$/, '')], f] }
 
     ch_annot_dir = params.annotsv_annotations
         ? Channel.value(file(params.annotsv_annotations, checkIfExists: true))
@@ -301,4 +305,5 @@ workflow GERMLINECNVCALLER_COHORT {
     knotannotsv_xlsm     = KNOTANNOTSV_XLSM.out.xl
     cnv_qc               = CNV_QC_OUTLIER.out.report
     allelic_loh          = ALLELIC_LOH.out.tsv
+    allelic_loh_pass     = ALLELIC_LOH.out.lohpass
 }
