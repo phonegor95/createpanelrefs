@@ -5,23 +5,25 @@
 */
 
 include { BAM_CREATE_SOM_PON_GATK  } from '../subworkflows/nf-core/bam_create_som_pon_gatk'
-include { CNVKIT_BATCH             } from '../modules/nf-core/cnvkit/batch'
+include { CNVKIT_PON               } from '../subworkflows/local/cnvkit_pon'
 include { GENS_PON                 } from '../subworkflows/local/gens_pon'
 include { GERMLINECNVCALLER_COHORT } from '../subworkflows/local/germlinecnvcaller_cohort'
-include { SAMTOOLS_VIEW            } from '../modules/nf-core/samtools/view'
+include { PREPARE_ALIGNMENT        } from '../subworkflows/local/prepare_alignment'
 
 workflow CREATEPANELREFS {
     take:
     samplesheet // channel: samplesheet read in from --input
-    tools // array: tools to run, or no_tools if none (it's actually comma separated values string, but close enough)
+    tools // list: tools to run
+    cnvkit_pon_name // string: name of cnvkit pon
     gcnv_model_name // string: name of gcnv model
+    gcnv_analysis_type // string: type of analysis for germlinecnvcaller ('wes' or 'wgs')
     gens_analysis_type // string: type of analysis for gens pon ('lrs' or 'srs')
     gens_pon_name // string: name of gens pon
     mutect2_pon_name // string: name of mutect2 pon
-    fasta // channel: [meta, fasta]
+    cnvkit_targets // channel: [meta, cnvkit_targets]
     dict // channel: [meta, dict]
     fai // channel: [meta, fai]
-    cnvkit_targets // channel: [meta, cnvkit_targets]
+    fasta // channel: [meta, fasta]
     gcnv_exclude_bed // channel: [meta, gcnv_exclude_bed]
     gcnv_exclude_interval_list // channel: [meta, gcnv_exclude_interval_list]
     gcnv_mappable_regions // channel: [meta, gcnv_mappable_regions]
@@ -34,50 +36,50 @@ workflow CREATEPANELREFS {
     mutect2_target_bed // channel: [meta, mutect2_target_bed]
 
     main:
-    if (tools.split(',').contains('cnvkit')) {
+    ch_gens_bed = channel.empty()
+    ch_gens_pon = channel.empty()
+    ch_gens_read_counts = channel.empty()
+    ch_germlinecnvcaller_cnv = channel.empty()
+    ch_germlinecnvcaller_ploidy_model = channel.empty()
+    ch_germlinecnvcaller_read_counts = channel.empty()
+    ch_gatk4_pon = channel.empty()
+    ch_gatk4_mutect2 = channel.empty()
+    ch_gatk4_genomicsdb = channel.empty()
 
-        input_by_fmt = samplesheet.branch { meta, bam, _bai, cram, crai ->
-            bam: bam
-            return [meta, bam]
-            cram: cram
-            return [meta, cram, crai]
-        }
+    // Auto-index alignment files if indexes are missing from the samplesheet
+    PREPARE_ALIGNMENT(samplesheet, tools)
 
-        cnvkit_input = SAMTOOLS_VIEW(
-            input_by_fmt.cram,
-            fasta.map { meta, fasta_ -> [meta, fasta_, []] },
-            [[:], []],
-            [[:], []],
-            false,
-        ).bam.mix(input_by_fmt.bam).map { meta, bam ->
-            [meta + [id: 'panel'], bam]
-        }.groupTuple().map { meta, bam ->
-            [meta, [], [], bam, []]
-        }
+    //CNVKIT
+    CNVKIT_PON(
+        PREPARE_ALIGNMENT.out.reads_index.filter { 'cnvkit' in tools },
+        fasta,
+        cnvkit_targets,
+        cnvkit_pon_name,
+    )
 
-        CNVKIT_BATCH(
-            cnvkit_input,
-            fasta.map { meta, fasta_ -> [meta, fasta_, []] },
-            cnvkit_targets,
-            [[:], []],
-            true,
+    // GENS
+    if ('gens' in tools) {
+        GENS_PON(
+            PREPARE_ALIGNMENT.out.reads_index,
+            gens_analysis_type,
+            gens_pon_name,
+            dict,
+            fai,
+            fasta,
+            gens_interval_list,
         )
+
+        ch_gens_bed = GENS_PON.out.bed
+        ch_gens_pon = GENS_PON.out.pon
+        ch_gens_read_counts = GENS_PON.out.read_counts
     }
 
-    if (tools.split(',').contains('germlinecnvcaller')) {
-
-        germlinecnvcaller_input = samplesheet.map { meta, bam, bai, cram, crai ->
-            if (bam) {
-                return [meta + [data_type: 'bam'], bam, bai]
-            }
-            if (cram) {
-                return [meta + [data_type: 'cram'], cram, crai]
-            }
-        }
-
+    // GERMLINECNVCALLER
+    if ('germlinecnvcaller' in tools) {
         GERMLINECNVCALLER_COHORT(
-            germlinecnvcaller_input,
+            PREPARE_ALIGNMENT.out.reads_index,
             gcnv_model_name,
+            gcnv_analysis_type,
             dict,
             fai,
             fasta,
@@ -89,21 +91,16 @@ workflow CREATEPANELREFS {
             gcnv_target_bed,
             gcnv_target_interval_list,
         )
+
+        ch_germlinecnvcaller_cnv = GERMLINECNVCALLER_COHORT.out.cnv_calls.mix(GERMLINECNVCALLER_COHORT.out.cnv_model)
+        ch_germlinecnvcaller_ploidy_model = GERMLINECNVCALLER_COHORT.out.ploidy_model
+        ch_germlinecnvcaller_read_counts = GERMLINECNVCALLER_COHORT.out.read_counts
     }
 
-    if (tools.split(',').contains('mutect2')) {
-
-        mutect2_input = samplesheet.map { meta, bam, bai, cram, crai ->
-            if (bam) {
-                return [meta + [data_type: 'bam'], bam, bai]
-            }
-            if (cram) {
-                return [meta + [data_type: 'cram'], cram, crai]
-            }
-        }
-
+    // MUTECT2
+    if ('mutect2' in tools) {
         BAM_CREATE_SOM_PON_GATK(
-            mutect2_input,
+            PREPARE_ALIGNMENT.out.reads_index,
             fasta,
             fai.map { meta, fai_ -> [meta, fai_, []] },
             dict,
@@ -111,27 +108,22 @@ workflow CREATEPANELREFS {
             mutect2_target_bed.map { _meta, target -> [target] },
             intervals_num,
         )
+        ch_gatk4_genomicsdb = BAM_CREATE_SOM_PON_GATK.out.genomicsdb
+        ch_gatk4_mutect2 = BAM_CREATE_SOM_PON_GATK.out.mutect2_vcf.mix(BAM_CREATE_SOM_PON_GATK.out.mutect2_index, BAM_CREATE_SOM_PON_GATK.out.mutect2_stats)
+        ch_gatk4_pon = BAM_CREATE_SOM_PON_GATK.out.pon_vcf.mix(BAM_CREATE_SOM_PON_GATK.out.pon_index)
     }
 
-    if (tools.split(',').contains('gens')) {
-
-        gens_input = samplesheet.map { meta, bam, bai, cram, crai ->
-            if (bam) {
-                return [meta + [data_type: 'bam'], bam, bai]
-            }
-            if (cram) {
-                return [meta + [data_type: 'cram'], cram, crai]
-            }
-        }
-
-        GENS_PON(
-            gens_input,
-            gens_analysis_type,
-            gens_pon_name,
-            dict,
-            fai,
-            fasta,
-            gens_interval_list,
-        )
-    }
+    emit:
+    cnvkit_bed                     = CNVKIT_PON.out.bed
+    cnvkit_out                     = CNVKIT_PON.out.cnn.mix(CNVKIT_PON.out.cnr)
+    gens_bed                       = ch_gens_bed
+    gens_pon                       = ch_gens_pon
+    gens_read_counts               = ch_gens_read_counts
+    germlinecnvcaller_cnv          = ch_germlinecnvcaller_cnv
+    germlinecnvcaller_ploidy_model = ch_germlinecnvcaller_ploidy_model
+    germlinecnvcaller_read_counts  = ch_germlinecnvcaller_read_counts
+    gatk4_genomicsdb               = ch_gatk4_genomicsdb
+    gatk4_mutect2                  = ch_gatk4_mutect2
+    gatk4_pon                      = ch_gatk4_pon
+    reads_index                    = PREPARE_ALIGNMENT.out.reads_index
 }

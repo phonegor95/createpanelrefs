@@ -24,7 +24,7 @@ class UTILS {
         ]
 
         // stable_name: All files + folders in ${outdir}/ with a stable name
-        def stable_name = getAllFilesFromDir(outdir, relative: true, includeDir: true, ignore: ['pipeline_info/*.{html,json,txt}'])
+        def stable_name = getAllFilesFromDir(outdir, relative: true, includeDir: true, ignore: ['pipeline_info/*.{html,json,txt}', 'gatk4/genomicsdb/*/*/__*-*_*', 'gatk4/genomicsdb/*/*/__*-*_*/*', 'gatk4/genomicsdb/**/genomicsdb_meta_dir/genomicsdb_meta_*.json'])
         // stable_content: All files in ${outdir}/ with stable content
         def stable_content = getAllFilesFromDir(outdir, ignoreFile: 'tests/.nftignore', ignore: [scenario.ignoreFiles])
         // vcf_files: All vcf files
@@ -113,6 +113,10 @@ class UTILS {
             // If a tag is provided, add it to the test
             if (scenario.tag) {
                 tag scenario.tag
+            }
+
+            if (scenario.failure) {
+                tag "failure"
             }
 
             when {

@@ -21,8 +21,9 @@ include { KNOTANNOTSV as KNOTANNOTSV_XLSM                              } from '.
 
 workflow GERMLINECNVCALLER_COHORT {
     take:
-    ch_input // channel: [mandatory] [ val(meta), path(bam/cram), path(bai/crai) ]
+    ch_reads_index // channel: [mandatory] [ val(meta), path(bam/cram), path(bai/crai) ]
     val_pon_name //  string: [optional] name for panel of normals
+    val_analysis_type // string: [mandatory] type of analysis ('wes' or 'wgs')
     ch_dict // channel: [optional] [ val(meta), path(dict) ]
     ch_fai // channel: [optional] [ val(meta), path(fai) ]
     ch_fasta // channel: [mandatory] [ val(meta), path(fasta) ]
@@ -35,45 +36,54 @@ workflow GERMLINECNVCALLER_COHORT {
     ch_user_target_interval_list // channel: [optional] [ val(meta), path(intervals) ]
 
     main:
-    //  Prepare references
-    GATK4_INDEXFEATUREFILE_MAPPABILITY(ch_mappable_regions)
-    GATK4_INDEXFEATUREFILE_SEGDUP(ch_segmental_duplications)
+    //  Index feature files — only when a real file is provided
+    GATK4_INDEXFEATUREFILE_MAPPABILITY(ch_mappable_regions.filter { _meta, regions -> !(regions instanceof List) })
+    GATK4_INDEXFEATUREFILE_SEGDUP(ch_segmental_duplications.filter { _meta, segdup -> !(segdup instanceof List) })
 
-    //Runs for wes analysis, when target_bed file is provided instead of target_interval_list
-    GATK4_BEDTOINTERVALLIST_TARGETS(ch_target_bed, ch_dict)
+    // Bed to interval list conversion — only for WES when bed is provided and no interval list given
+    ch_target_bed_interval_list = channel.empty()
+    ch_exclude_bed_interval_list = channel.empty()
 
-    //Runs for wes analysis, when exclude_bed file is provided instead of target_interval_list
-    GATK4_BEDTOINTERVALLIST_EXCLUDE(ch_exclude_bed, ch_dict)
+    if (val_analysis_type == "wes") {
+        GATK4_BEDTOINTERVALLIST_TARGETS(
+            ch_target_bed.filter { _meta, bed -> !(bed instanceof List) },
+            ch_dict,
+        )
 
-    ch_user_target_interval_list
-        .combine(GATK4_BEDTOINTERVALLIST_TARGETS.out.interval_list.ifEmpty(null))
+        GATK4_BEDTOINTERVALLIST_EXCLUDE(
+            ch_exclude_bed.filter { _meta, bed -> !(bed instanceof List) },
+            ch_dict,
+        )
+
+        ch_target_bed_interval_list = GATK4_BEDTOINTERVALLIST_TARGETS.out.interval_list
+        ch_exclude_bed_interval_list = GATK4_BEDTOINTERVALLIST_EXCLUDE.out.interval_list
+    }
+
+    ch_targets_for_mix = ch_user_target_interval_list
+        .combine(ch_target_bed_interval_list.ifEmpty(null))
         .branch { it ->
             intervallistfrompath: it[2].equals(null)
             return [it[0], it[1]]
             intervallistfrombed: !it[2].equals(null)
             return [it[2], it[3]]
         }
-        .set { ch_targets_for_mix }
 
-    ch_targets_for_mix.intervallistfrompath
+    ch_target_interval_list = ch_targets_for_mix.intervallistfrompath
         .mix(ch_targets_for_mix.intervallistfrombed)
         .collect()
-        .set { ch_target_interval_list }
 
-    ch_user_exclude_interval_list
-        .combine(GATK4_BEDTOINTERVALLIST_EXCLUDE.out.interval_list.ifEmpty(null))
+    ch_exclude_for_mix = ch_user_exclude_interval_list
+        .combine(ch_exclude_bed_interval_list.ifEmpty(null))
         .branch { it ->
             intervallistfrompath: it[2].equals(null)
             return [it[0], it[1]]
             intervallistfrombed: !it[2].equals(null)
             return [it[2], it[3]]
         }
-        .set { ch_exclude_for_mix }
 
-    ch_exclude_for_mix.intervallistfrompath
+    ch_exclude_interval_list = ch_exclude_for_mix.intervallistfrompath
         .mix(ch_exclude_for_mix.intervallistfrombed)
         .collect()
-        .set { ch_exclude_interval_list }
 
     GATK4_PREPROCESSINTERVALS(
         ch_fasta,
@@ -94,26 +104,7 @@ workflow GERMLINECNVCALLER_COHORT {
         GATK4_INDEXFEATUREFILE_SEGDUP.out.index.ifEmpty([[:], []]),
     )
 
-    // Filter out files that lack indices, and generate them
-    ch_input
-        .branch { meta, alignment, index ->
-            alignment_with_index: index.size() > 0
-            return [meta, alignment, index]
-            alignment_without_index: index.size() == 0
-            return [meta, alignment]
-        }
-        .set { ch_for_mix }
-
-    SAMTOOLS_INDEX(ch_for_mix.alignment_without_index)
-
-    ch_index = SAMTOOLS_INDEX.out.index
-
-    // Collect alignment files and their indices
-    ch_for_mix.alignment_without_index
-        .join(ch_index)
-        .mix(ch_for_mix.alignment_with_index)
-        .combine(GATK4_PREPROCESSINTERVALS.out.interval_list.map { it -> it[1] })
-        .set { ch_readcounts_in }
+    ch_readcounts_in = ch_reads_index.combine(GATK4_PREPROCESSINTERVALS.out.interval_list.map { it -> it[1] })
 
     // Collect read counts, and generate models
     GATK4_COLLECTREADCOUNTS(
@@ -143,12 +134,11 @@ workflow GERMLINECNVCALLER_COHORT {
         GATK4_ANNOTATEINTERVALS.out.annotated_intervals,
     )
 
-    GATK4_INTERVALLISTTOOLS(GATK4_FILTERINTERVALS.out.interval_list).interval_list.map { _meta, it -> it }.flatten().set { ch_intervallist_out }
+    ch_intervallist_out = GATK4_INTERVALLISTTOOLS(GATK4_FILTERINTERVALS.out.interval_list).interval_list.map { _meta, it -> it }.flatten()
 
-    ch_readcounts_out
+    ch_contigploidy_in = ch_readcounts_out
         .combine(GATK4_FILTERINTERVALS.out.interval_list)
         .map { meta, counts, _meta2, il -> [meta, counts, il, []] }
-        .set { ch_contigploidy_in }
 
     GATK4_DETERMINEGERMLINECONTIGPLOIDY(
         ch_contigploidy_in,
@@ -156,7 +146,7 @@ workflow GERMLINECNVCALLER_COHORT {
         ch_ploidy_priors,
     )
 
-    ch_readcounts_out
+    ch_cnvcaller_in = ch_readcounts_out
         .combine(ch_intervallist_out)
         .combine(GATK4_DETERMINEGERMLINECONTIGPLOIDY.out.calls)
         .combine(GATK4_ANNOTATEINTERVALS.out.annotated_intervals)
@@ -250,19 +240,19 @@ workflow GERMLINECNVCALLER_COHORT {
     // Gated on params.allelic_snp_vcf. Join each PASS VCF (doubled sample id)
     // back to its alignment (clean meta.id) for CollectAllelicCounts.
     ch_loh_pass = COHORT_RECURRENCE_FILTER.out.pass
-        .map { _meta, files -> files instanceof List ? files : [files] }
+        .map { _meta, pass_files -> (pass_files instanceof List) ? pass_files : [pass_files] }
         .flatten()
         .map { f -> [f.name.replaceAll(/\.recurfilt\.pass\.vcf\.gz$/, ''), f] }
 
     ch_loh_in = ch_loh_pass
-        .combine(ch_input.map { m, aln, idx -> [m.id, aln, idx] })
+        .combine(ch_reads_index.map { m, aln, idx -> [m.id, aln, idx] })
         .filter { doubled, _vcf, sid, _aln, _idx -> doubled == sid || doubled == "${sid}_${sid}" }
         .map { doubled, vcf, _sid, aln, idx -> [[id: doubled], vcf, aln, idx] }
 
     ch_snp_loh = params.allelic_snp_vcf
-        ? Channel.value([file(params.allelic_snp_vcf, checkIfExists: true),
+        ? channel.value([file(params.allelic_snp_vcf, checkIfExists: true),
                          file(params.allelic_snp_vcf + '.tbi', checkIfExists: true)])
-        : Channel.value([[], []])
+        : channel.value([[], []])
 
     ch_loh_segdup = ch_segmental_duplications.map { _meta, bed -> bed }.ifEmpty([]).first()
 
@@ -274,13 +264,13 @@ workflow GERMLINECNVCALLER_COHORT {
     ch_annotsv_in = params.allelic_snp_vcf
         ? ALLELIC_LOH.out.lohpass
         : COHORT_RECURRENCE_FILTER.out.pass
-            .map { _meta, files -> files instanceof List ? files : [files] }
+            .map { _meta, pass_files -> (pass_files instanceof List) ? pass_files : [pass_files] }
             .flatten()
             .map { f -> [[id: f.name.replaceAll(/\.recurfilt\.pass\.vcf\.gz$/, '')], f] }
 
     ch_annot_dir = params.annotsv_annotations
-        ? Channel.value(file(params.annotsv_annotations, checkIfExists: true))
-        : Channel.value([])
+        ? channel.value(file(params.annotsv_annotations, checkIfExists: true))
+        : channel.value([])
 
     ANNOTSV(ch_annotsv_in, ch_annot_dir)
 
@@ -290,10 +280,13 @@ workflow GERMLINECNVCALLER_COHORT {
     KNOTANNOTSV_XLSM(ANNOTSV.out.tsv.map { meta, tsv -> [meta, tsv, true] })
 
     emit:
-    cnvmodel             = GATK4_GERMLINECNVCALLER.out.cohortmodel
-    ploidymodel          = GATK4_DETERMINEGERMLINECONTIGPLOIDY.out.model
+    // Upstream 1.0.0 emit names consumed by workflows/createpanelrefs.nf
+    cnv_model            = GATK4_GERMLINECNVCALLER.out.cohortmodel
+    cnv_calls            = GATK4_GERMLINECNVCALLER.out.cohortcalls
+    ploidy_model         = GATK4_DETERMINEGERMLINECONTIGPLOIDY.out.model
+    read_counts          = ch_readcounts_out
+    // Local postprocess fan-out outputs (published via publishDir in conf/modules)
     ploidycalls          = GATK4_DETERMINEGERMLINECONTIGPLOIDY.out.calls
-    readcounts           = ch_readcounts_out
     genotyped_intervals  = GATK4_POSTPROCESSGERMLINECNVCALLS.out.genotyped_intervals
     genotyped_segments   = GATK4_POSTPROCESSGERMLINECNVCALLS.out.genotyped_segments
     denoised_copy_ratios = GATK4_POSTPROCESSGERMLINECNVCALLS.out.denoised_copy_ratios

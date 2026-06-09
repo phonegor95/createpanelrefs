@@ -1,5 +1,24 @@
 {
-    "-profile test --tools germlinecnvcaller --input tests/csv/1.0.0/bam_sorted.csv --gcnv_model_name cohort --gcnv_ploidy_priors --gcnv_scatter_content 2": {
+    "-profile test --tools germlinecnvcaller --gcnv_model_name null": {
+        "content": [
+            [
+                "pipeline_info"
+            ],
+            "No VCF files",
+            "No stable content",
+            "No warnings",
+            [
+                "  gcnv_model_name                    : null",
+                "--gcnv_model_name is not set. Please specify a name for the panel of normals."
+            ]
+        ],
+        "timestamp": "2026-06-05T18:22:52.632196797",
+        "meta": {
+            "nf-test": "0.9.5",
+            "nextflow": "26.04.3"
+        }
+    },
+    "-profile test --tools germlinecnvcaller --input tests/csv/1.0.0/bam_sorted.csv --gcnv_ploidy_priors --gcnv_scatter_content 2": {
         "content": [
             10,
             {
@@ -27,16 +46,16 @@
             },
             [
                 "germlinecnvcaller",
-                "germlinecnvcaller/determinegermlinecontigploidy",
-                "germlinecnvcaller/determinegermlinecontigploidy/cohort-model",
-                "germlinecnvcaller/determinegermlinecontigploidy/cohort-model/contig_ploidy_prior.tsv",
-                "germlinecnvcaller/determinegermlinecontigploidy/cohort-model/gcnvkernel_version.json",
-                "germlinecnvcaller/determinegermlinecontigploidy/cohort-model/interval_list.tsv",
-                "germlinecnvcaller/determinegermlinecontigploidy/cohort-model/mu_mean_bias_j_interval__.tsv",
-                "germlinecnvcaller/determinegermlinecontigploidy/cohort-model/mu_psi_j_log__.tsv",
-                "germlinecnvcaller/determinegermlinecontigploidy/cohort-model/ploidy_config.json",
-                "germlinecnvcaller/determinegermlinecontigploidy/cohort-model/std_mean_bias_j_interval__.tsv",
-                "germlinecnvcaller/determinegermlinecontigploidy/cohort-model/std_psi_j_log__.tsv",
+                "germlinecnvcaller/determinecontigploidy",
+                "germlinecnvcaller/determinecontigploidy/germlinecnvcaller-model",
+                "germlinecnvcaller/determinecontigploidy/germlinecnvcaller-model/contig_ploidy_prior.tsv",
+                "germlinecnvcaller/determinecontigploidy/germlinecnvcaller-model/gcnvkernel_version.json",
+                "germlinecnvcaller/determinecontigploidy/germlinecnvcaller-model/interval_list.tsv",
+                "germlinecnvcaller/determinecontigploidy/germlinecnvcaller-model/mu_mean_bias_j_interval__.tsv",
+                "germlinecnvcaller/determinecontigploidy/germlinecnvcaller-model/mu_psi_j_log__.tsv",
+                "germlinecnvcaller/determinecontigploidy/germlinecnvcaller-model/ploidy_config.json",
+                "germlinecnvcaller/determinecontigploidy/germlinecnvcaller-model/std_mean_bias_j_interval__.tsv",
+                "germlinecnvcaller/determinecontigploidy/germlinecnvcaller-model/std_psi_j_log__.tsv",
                 "germlinecnvcaller/germlinecnvcaller",
                 "germlinecnvcaller/germlinecnvcaller/1scattered-cnv-model",
                 "germlinecnvcaller/germlinecnvcaller/1scattered-cnv-model/1scattered-calls",
@@ -133,18 +152,19 @@
                 "germlinecnvcaller/readcounts",
                 "germlinecnvcaller/readcounts/testN.hdf5",
                 "germlinecnvcaller/readcounts/testT.hdf5",
-                "multiqc",
-                "multiqc/multiqc_data",
-                "multiqc/multiqc_data/llms-full.txt",
-                "multiqc/multiqc_data/multiqc.log",
-                "multiqc/multiqc_data/multiqc.parquet",
-                "multiqc/multiqc_data/multiqc_citations.txt",
-                "multiqc/multiqc_data/multiqc_data.json",
-                "multiqc/multiqc_data/multiqc_software_versions.txt",
-                "multiqc/multiqc_data/multiqc_sources.txt",
-                "multiqc/multiqc_report.html",
                 "pipeline_info",
-                "pipeline_info/nf_core_createpanelrefs_software_mqc_versions.yml"
+                "pipeline_info/nf_core_createpanelrefs_software_mqc_versions.yml",
+                "reports",
+                "reports/multiqc",
+                "reports/multiqc/multiqc_data",
+                "reports/multiqc/multiqc_data/llms-full.txt",
+                "reports/multiqc/multiqc_data/multiqc.log",
+                "reports/multiqc/multiqc_data/multiqc.parquet",
+                "reports/multiqc/multiqc_data/multiqc_citations.txt",
+                "reports/multiqc/multiqc_data/multiqc_data.json",
+                "reports/multiqc/multiqc_data/multiqc_software_versions.txt",
+                "reports/multiqc/multiqc_data/multiqc_sources.txt",
+                "reports/multiqc/multiqc_report.html"
             ],
             "No VCF files",
             [
@@ -170,12 +190,14 @@
                 "gcnvkernel_version.json:md5,aa0ad91e0ff23be94e09e909cf2286d8",
                 "multiqc_citations.txt:md5,4c806e63a283ec1b7e78cdae3a923d4f"
             ],
-            "No warnings"
+            [
+                "WARN: --gcnv_model_name is set to the default value 'germlinecnvcaller'."
+            ]
         ],
-        "timestamp": "2026-04-10T16:48:59.354336293",
+        "timestamp": "2026-06-05T17:39:37.320651508",
         "meta": {
             "nf-test": "0.9.5",
-            "nextflow": "26.03.2"
+            "nextflow": "26.04.3"
         }
     }
 }
