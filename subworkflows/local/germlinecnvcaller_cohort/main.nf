@@ -14,6 +14,7 @@ include { SAMTOOLS_INDEX                                               } from '.
 include { BCFTOOLS_FILTER_GCNV                                         } from '../../../modules/local/bcftools_filter_gcnv'
 include { COHORT_RECURRENCE_FILTER                                     } from '../../../modules/local/cohort_recurrence_filter'
 include { CNV_QC_OUTLIER                                               } from '../../../modules/local/cnv_qc_outlier'
+include { ALLELIC_LOH                                                  } from '../../../modules/local/allelic_loh'
 include { ANNOTSV                                                      } from '../../../modules/local/annotsv'
 include { KNOTANNOTSV as KNOTANNOTSV_HTML                              } from '../../../modules/nf-core/knotannotsv'
 include { KNOTANNOTSV as KNOTANNOTSV_XLSM                              } from '../../../modules/nf-core/knotannotsv'
@@ -245,6 +246,26 @@ workflow GERMLINECNVCALLER_COHORT {
     ch_qc_blacklist = params.qc_blacklist_bed ? file(params.qc_blacklist_bed, checkIfExists: true) : []
     CNV_QC_OUTLIER(ch_qc_in, ch_qc_segdup, ch_qc_blacklist)
 
+    // ---- Allelic LOH confirmation of PASS deletions (orthogonal to depth) ----
+    // Gated on params.allelic_snp_vcf. Join each PASS VCF (doubled sample id)
+    // back to its alignment (clean meta.id) for CollectAllelicCounts.
+    ch_loh_pass = COHORT_RECURRENCE_FILTER.out.pass
+        .map { _meta, files -> files instanceof List ? files : [files] }
+        .flatten()
+        .map { f -> [f.name.replaceAll(/\.recurfilt\.pass\.vcf\.gz$/, ''), f] }
+
+    ch_loh_in = ch_loh_pass
+        .combine(ch_input.map { m, aln, idx -> [m.id, aln, idx] })
+        .filter { doubled, _vcf, sid, _aln, _idx -> doubled == sid || doubled == "${sid}_${sid}" }
+        .map { doubled, vcf, _sid, aln, idx -> [[id: doubled], vcf, aln, idx] }
+
+    ch_snp_loh = params.allelic_snp_vcf
+        ? Channel.value([file(params.allelic_snp_vcf, checkIfExists: true),
+                         file(params.allelic_snp_vcf + '.tbi', checkIfExists: true)])
+        : Channel.value([[], []])
+
+    ALLELIC_LOH(ch_loh_in, ch_fasta, ch_fai, ch_dict, ch_snp_loh)
+
     // ---- Per-sample AnnotSV annotation of the PASS survivors ----------------
     // Re-derive a per-sample meta from each PASS file name so AnnotSV fans out
     // one task per sample. Gated on params.annotsv_annotations being set.
@@ -279,4 +300,5 @@ workflow GERMLINECNVCALLER_COHORT {
     knotannotsv_html     = KNOTANNOTSV_HTML.out.html
     knotannotsv_xlsm     = KNOTANNOTSV_XLSM.out.xl
     cnv_qc               = CNV_QC_OUTLIER.out.report
+    allelic_loh          = ALLELIC_LOH.out.tsv
 }

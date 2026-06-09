@@ -354,6 +354,17 @@
                     "format": "file-path",
                     "description": "Optional extra blacklist BED used (together with the segmental-duplication track) to compute each sample's LCR-call fraction in the CNV QC report.",
                     "fa_icon": "fas fa-folder-open"
+                },
+                "allelic_snp_vcf": {
+                    "type": "string",
+                    "format": "file-path",
+                    "description": "Common-SNP sites VCF (e.g. 1000G high-confidence SNPs) for allelic LOH confirmation of PASS deletions via CollectAllelicCounts. If unset, the allelic LOH step is skipped.",
+                    "fa_icon": "fas fa-dna"
+                },
+                "gatk_container": {
+                    "type": "string",
+                    "description": "Override the GATK container with a site-local Singularity image (.sif) path to avoid a biocontainer pull (used by the allelic LOH step).",
+                    "fa_icon": "fas fa-box"
                 }
             }
         },
