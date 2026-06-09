@@ -151,7 +151,6 @@ workflow GERMLINECNVCALLER_COHORT {
         .combine(GATK4_DETERMINEGERMLINECONTIGPLOIDY.out.calls)
         .combine(GATK4_ANNOTATEINTERVALS.out.annotated_intervals)
         .map { meta, counts, il, _meta2, calls, _meta3, annotated_intervals -> [meta + [id: il.baseName], counts, il, calls, [], annotated_intervals] }
-        .set { ch_cnvcaller_in }
 
     GATK4_GERMLINECNVCALLER(ch_cnvcaller_in)
 
