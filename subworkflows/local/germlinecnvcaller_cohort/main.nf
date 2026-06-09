@@ -11,6 +11,11 @@ include { GATK4_INTERVALLISTTOOLS                                      } from '.
 include { GATK4_POSTPROCESSGERMLINECNVCALLS                            } from '../../../modules/nf-core/gatk4/postprocessgermlinecnvcalls'
 include { GATK4_PREPROCESSINTERVALS                                    } from '../../../modules/nf-core/gatk4/preprocessintervals'
 include { SAMTOOLS_INDEX                                               } from '../../../modules/nf-core/samtools/index'
+include { BCFTOOLS_FILTER_GCNV                                         } from '../../../modules/local/bcftools_filter_gcnv'
+include { COHORT_RECURRENCE_FILTER                                     } from '../../../modules/local/cohort_recurrence_filter'
+include { ANNOTSV                                                      } from '../../../modules/local/annotsv'
+include { KNOTANNOTSV as KNOTANNOTSV_HTML                              } from '../../../modules/nf-core/knotannotsv'
+include { KNOTANNOTSV as KNOTANNOTSV_XLSM                              } from '../../../modules/nf-core/knotannotsv'
 
 workflow GERMLINECNVCALLER_COHORT {
     take:
@@ -124,13 +129,9 @@ workflow GERMLINECNVCALLER_COHORT {
     // postprocess fan-out does.
     GATK4_COLLECTREADCOUNTS.out.tsv
         .mix(GATK4_COLLECTREADCOUNTS.out.hdf5)
-        .collect { row -> [sample_id: row[0].id, count_file: row[1]] }
-        .map { rows ->
-            def sorted_counts = rows
-                .sort { a, b -> a.sample_id <=> b.sample_id }
-                .collect { it.count_file }
-            [[id: val_pon_name], sorted_counts]
-        }
+        .map { _meta, count_file -> count_file }
+        .toSortedList { a, b -> a.name <=> b.name }
+        .map { sorted_counts -> [[id: val_pon_name], sorted_counts] }
         .set { ch_readcounts_out }
 
 
@@ -183,7 +184,14 @@ workflow GERMLINECNVCALLER_COHORT {
             sample_dirs.collect { sample_dir ->
                 def sample_index = (sample_dir.name - 'SAMPLE_') as Integer
                 def sample_name = new File(sample_dir, 'sample_name.txt').text.trim()
-                [[id: sample_name, sample_index: sample_index], ploidy_calls, sample_index]
+                // Infer sex from the inferred chrX ploidy so downstream segment
+                // filtering can apply sex-aware thresholds without a samplesheet
+                // column: chrX ploidy >= 2 => female, otherwise male.
+                def ploidy_row = new File(sample_dir, 'contig_ploidy.tsv').readLines()
+                    .find { line -> def c = line.split('\t')[0]; c == 'chrX' || c == 'X' }
+                def chrx_ploidy = ploidy_row ? (ploidy_row.split('\t')[1] as Integer) : null
+                def sex = (chrx_ploidy != null && chrx_ploidy >= 2) ? 'F' : 'M'
+                [[id: sample_name, sample_index: sample_index, sex: sex], ploidy_calls, sample_index]
             }
         }
         .combine(ch_gcnv_model_shards)
@@ -202,6 +210,53 @@ workflow GERMLINECNVCALLER_COHORT {
 
     GATK4_POSTPROCESSGERMLINECNVCALLS(ch_postprocess_in)
 
+    // Sex-aware filtering of the per-sample genotyped segments (meta.sex set above).
+    BCFTOOLS_FILTER_GCNV(GATK4_POSTPROCESSGERMLINECNVCALLS.out.genotyped_segments)
+
+    // ---- Cohort-recurrence (two-arm) soft filter ----------------------------
+    // Pool every sample's sex-filtered segments into one cohort process that
+    // flags recurrent calls (common CNVs / paralog artifacts). Needs all
+    // samples at once, so collect the VCFs and build a sample->sex map. The
+    // sex map drives the per-sex denominators for chrX/chrY (autosomes pooled).
+    ch_filtered_for_recur = BCFTOOLS_FILTER_GCNV.out.vcf
+
+    ch_recur_sexmap = ch_filtered_for_recur
+        .map { meta, _vcf -> "${meta.id}\t${meta.sex}\n" }
+        .collectFile(name: 'cohort_sex_map.tsv', sort: true)
+
+    ch_recur_vcfs = ch_filtered_for_recur
+        .map { _meta, vcf -> vcf }
+        .collect()
+
+    // Nest the collected VCF list inside the tuple BEFORE joining, otherwise
+    // combine/merge spread the list into separate tuple elements. Appending the
+    // scalar sex_map via combine then keeps the list intact.
+    ch_recur_in = ch_recur_vcfs
+        .map { vcfs -> [[id: val_pon_name], vcfs] }
+        .combine(ch_recur_sexmap)
+        .map { meta, vcfs, sex_map -> [meta, sex_map, vcfs] }
+
+    COHORT_RECURRENCE_FILTER(ch_recur_in)
+
+    // ---- Per-sample AnnotSV annotation of the PASS survivors ----------------
+    // Re-derive a per-sample meta from each PASS file name so AnnotSV fans out
+    // one task per sample. Gated on params.annotsv_annotations being set.
+    ch_annotsv_in = COHORT_RECURRENCE_FILTER.out.pass
+        .map { _meta, files -> files instanceof List ? files : [files] }
+        .flatten()
+        .map { f -> [[id: f.name.replaceAll(/\.recurfilt\.pass\.vcf\.gz$/, '')], f] }
+
+    ch_annot_dir = params.annotsv_annotations
+        ? Channel.value(file(params.annotsv_annotations, checkIfExists: true))
+        : Channel.value([])
+
+    ANNOTSV(ch_annotsv_in, ch_annot_dir)
+
+    // ---- knotAnnotSV: HTML report + XLSM workbook per sample ----------------
+    // 3rd tuple value selects the script (false = HTML, true = XLSM).
+    KNOTANNOTSV_HTML(ANNOTSV.out.tsv.map { meta, tsv -> [meta, tsv, false] })
+    KNOTANNOTSV_XLSM(ANNOTSV.out.tsv.map { meta, tsv -> [meta, tsv, true] })
+
     emit:
     cnvmodel             = GATK4_GERMLINECNVCALLER.out.cohortmodel
     ploidymodel          = GATK4_DETERMINEGERMLINECONTIGPLOIDY.out.model
@@ -210,4 +265,10 @@ workflow GERMLINECNVCALLER_COHORT {
     genotyped_intervals  = GATK4_POSTPROCESSGERMLINECNVCALLS.out.genotyped_intervals
     genotyped_segments   = GATK4_POSTPROCESSGERMLINECNVCALLS.out.genotyped_segments
     denoised_copy_ratios = GATK4_POSTPROCESSGERMLINECNVCALLS.out.denoised_copy_ratios
+    filtered_segments    = BCFTOOLS_FILTER_GCNV.out.vcf
+    recurfilt_flagged    = COHORT_RECURRENCE_FILTER.out.flagged
+    recurfilt_pass       = COHORT_RECURRENCE_FILTER.out.pass
+    annotsv              = ANNOTSV.out.tsv
+    knotannotsv_html     = KNOTANNOTSV_HTML.out.html
+    knotannotsv_xlsm     = KNOTANNOTSV_XLSM.out.xl
 }

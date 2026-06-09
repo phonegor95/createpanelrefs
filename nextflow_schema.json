@@ -299,6 +299,48 @@
                     "default": 5000,
                     "fa_icon": "fas fa-sort-numeric-down",
                     "help_text": "Used by GATK's IntervalListTools."
+                },
+                "recur_recip_threshold": {
+                    "type": "number",
+                    "default": 0.5,
+                    "minimum": 0,
+                    "maximum": 1,
+                    "description": "Cohort-recurrence reciprocal-coverage arm: flag a call as CohortRecurrent if the fraction of the cohort that shares it (overlap covering >= recur_recip_coverage of the call) is >= this value.",
+                    "fa_icon": "fas fa-percent"
+                },
+                "recur_recip_coverage": {
+                    "type": "number",
+                    "default": 0.5,
+                    "minimum": 0,
+                    "maximum": 1,
+                    "description": "Fraction of a call that an overlapping call must cover for the two to be considered the same (reciprocal-coverage arm).",
+                    "fa_icon": "fas fa-percent"
+                },
+                "recur_overlap_threshold": {
+                    "type": "number",
+                    "default": 0.8,
+                    "minimum": 0,
+                    "maximum": 1,
+                    "description": "Cohort-recurrence any-overlap arm: flag a call as CohortRecurrent if the fraction of the cohort touching it on any base is >= this value. Catches ragged-breakpoint paralog artifacts that escape the reciprocal arm.",
+                    "fa_icon": "fas fa-percent"
+                },
+                "annotsv_annotations": {
+                    "type": "string",
+                    "format": "directory-path",
+                    "description": "Path to an AnnotSV annotation bundle (Annotations_Human tree). If unset, the AnnotSV step is skipped.",
+                    "fa_icon": "fas fa-folder-open"
+                },
+                "annotsv_genome_build": {
+                    "type": "string",
+                    "default": "GRCh38",
+                    "description": "Genome build passed to AnnotSV (-genomeBuild).",
+                    "enum": ["GRCh37", "GRCh38"],
+                    "fa_icon": "fas fa-dna"
+                },
+                "annotsv_container": {
+                    "type": "string",
+                    "description": "Override the AnnotSV container with a site-local Singularity image (.sif) path to avoid a biocontainer pull.",
+                    "fa_icon": "fas fa-box"
                 }
             }
         },
