@@ -13,6 +13,7 @@ include { GATK4_PREPROCESSINTERVALS                                    } from '.
 include { SAMTOOLS_INDEX                                               } from '../../../modules/nf-core/samtools/index'
 include { BCFTOOLS_FILTER_GCNV                                         } from '../../../modules/local/bcftools_filter_gcnv'
 include { COHORT_RECURRENCE_FILTER                                     } from '../../../modules/local/cohort_recurrence_filter'
+include { CNV_QC_OUTLIER                                               } from '../../../modules/local/cnv_qc_outlier'
 include { ANNOTSV                                                      } from '../../../modules/local/annotsv'
 include { KNOTANNOTSV as KNOTANNOTSV_HTML                              } from '../../../modules/nf-core/knotannotsv'
 include { KNOTANNOTSV as KNOTANNOTSV_XLSM                              } from '../../../modules/nf-core/knotannotsv'
@@ -238,6 +239,12 @@ workflow GERMLINECNVCALLER_COHORT {
 
     COHORT_RECURRENCE_FILTER(ch_recur_in)
 
+    // ---- Per-sample CNV QC outlier flag (cohort report) ---------------------
+    ch_qc_in = ch_recur_vcfs.map { vcfs -> [[id: val_pon_name], vcfs] }
+    ch_qc_segdup = ch_segmental_duplications.map { _meta, bed -> bed }.ifEmpty([])
+    ch_qc_blacklist = params.qc_blacklist_bed ? file(params.qc_blacklist_bed, checkIfExists: true) : []
+    CNV_QC_OUTLIER(ch_qc_in, ch_qc_segdup, ch_qc_blacklist)
+
     // ---- Per-sample AnnotSV annotation of the PASS survivors ----------------
     // Re-derive a per-sample meta from each PASS file name so AnnotSV fans out
     // one task per sample. Gated on params.annotsv_annotations being set.
@@ -271,4 +278,5 @@ workflow GERMLINECNVCALLER_COHORT {
     annotsv              = ANNOTSV.out.tsv
     knotannotsv_html     = KNOTANNOTSV_HTML.out.html
     knotannotsv_xlsm     = KNOTANNOTSV_XLSM.out.xl
+    cnv_qc               = CNV_QC_OUTLIER.out.report
 }

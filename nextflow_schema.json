@@ -341,6 +341,19 @@
                     "type": "string",
                     "description": "Override the AnnotSV container with a site-local Singularity image (.sif) path to avoid a biocontainer pull.",
                     "fa_icon": "fas fa-box"
+                },
+                "qc_outlier_mad_k": {
+                    "type": "number",
+                    "default": 3,
+                    "minimum": 1,
+                    "description": "Per-sample CNV QC: flag a sample as an outlier if total/LCR/CN0 call counts exceed median + this many MADs.",
+                    "fa_icon": "fas fa-flag"
+                },
+                "qc_blacklist_bed": {
+                    "type": "string",
+                    "format": "file-path",
+                    "description": "Optional extra blacklist BED used (together with the segmental-duplication track) to compute each sample's LCR-call fraction in the CNV QC report.",
+                    "fa_icon": "fas fa-folder-open"
                 }
             }
         },
