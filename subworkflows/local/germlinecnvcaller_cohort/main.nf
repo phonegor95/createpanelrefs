@@ -166,8 +166,14 @@ workflow GERMLINECNVCALLER_COHORT {
         .map { call_dirs -> [call_shards: call_dirs] }
         .set { ch_gcnv_call_shards }
 
+    // Samplesheet ids, wrapped in a map (single element -> combine won't spread
+    // the list), used to reconcile the gCNV sample name safely (below).
+    ch_aln_ids = ch_reads_index.map { m, _aln, _idx -> m.id }.collect().map { ids -> [valid_ids: ids] }
+
     GATK4_DETERMINEGERMLINECONTIGPLOIDY.out.calls
-        .flatMap { _meta, ploidy_calls ->
+        .combine(ch_aln_ids)
+        .flatMap { _meta, ploidy_calls, ids_map ->
+            def valid_ids = ids_map.valid_ids
             def sample_dirs = ploidy_calls.toFile()
                 .listFiles()
                 .findAll { it.isDirectory() && it.name.startsWith('SAMPLE_') }
@@ -176,11 +182,14 @@ workflow GERMLINECNVCALLER_COHORT {
                 def sample_index = (sample_dir.name - 'SAMPLE_') as Integer
                 def sample_name = new File(sample_dir, 'sample_name.txt').text.trim()
                 // GATK gCNV can emit a doubled sample name ("S1_S1"). Collapse the
-                // exact "X_X" form back to a single id at the source so every
-                // downstream output (postprocess dir, filtered_segments, recurfilt,
-                // LOH, AnnotSV) is named "S1" and the per-sample meta.id is uniform.
+                // exact "X_X" form back to a single id, but ONLY when the collapsed
+                // id is a real samplesheet id and the doubled form is not — so a
+                // sample legitimately named "X_X" is never mangled, and the
+                // collapsed id is guaranteed to reconcile with its alignment.
                 def dd = (sample_name =~ /^(.+)_\1$/)
-                if (dd.matches()) { sample_name = dd.group(1) }
+                if (dd.matches() && (dd.group(1) in valid_ids) && !(sample_name in valid_ids)) {
+                    sample_name = dd.group(1)
+                }
                 // Infer sex from the inferred chrX ploidy so downstream segment
                 // filtering can apply sex-aware thresholds without a samplesheet
                 // column: chrX ploidy >= 2 => female, otherwise male.
@@ -254,10 +263,18 @@ workflow GERMLINECNVCALLER_COHORT {
         .flatten()
         .map { f -> [f.name.replaceAll(/\.recurfilt\.pass\.vcf\.gz$/, ''), f] }
 
+    // Inner-join PASS VCF <-> alignment by sample id. remainder:true keeps an
+    // unmatched PASS VCF (aln == null) so we can warn instead of silently
+    // dropping it from allelic-LOH / AnnotSV.
     ch_loh_in = ch_loh_pass
-        .combine(ch_reads_index.map { m, aln, idx -> [m.id, aln, idx] })
-        .filter { sid_vcf, _vcf, sid_aln, _aln, _idx -> sid_vcf == sid_aln }
-        .map { sid, vcf, _sid, aln, idx -> [[id: sid], vcf, aln, idx] }
+        .join(ch_reads_index.map { m, aln, idx -> [m.id, aln, idx] }, remainder: true)
+        .filter { id, vcf, aln, _idx ->
+            if (vcf && !aln) {
+                log.warn("ALLELIC_LOH: PASS VCF for sample '${id}' has no matching alignment (sample-id reconciliation failed); skipping it for allelic-LOH/AnnotSV.")
+            }
+            vcf && aln
+        }
+        .map { id, vcf, aln, idx -> [[id: id], vcf, aln, idx] }
 
     ch_snp_loh = params.allelic_snp_vcf
         ? channel.value([file(params.allelic_snp_vcf, checkIfExists: true),

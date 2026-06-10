@@ -165,10 +165,11 @@ for v in vcfs:
     stats.append((sid, ntot, nflag, npass))
 
 print("%-34s %6s %8s %6s" % ("sample", "total", "flagged", "PASS"))
-tt = tf = 0
+tt = tf = tp = 0
 for sid, ntot, nflag, npass in stats:
     print("%-34s %6d %8d %6d" % (sid, ntot, nflag, npass))
     tt += ntot
     tf += nflag
-print("%-34s %6d %8d %6d" % ("TOTAL", tt, tf, tt - tf))
+    tp += npass
+print("%-34s %6d %8d %6d" % ("TOTAL", tt, tf, tp))
 # Tool versions are emitted via the Nextflow `versions` topic (see main.nf).
