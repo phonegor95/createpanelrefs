@@ -231,7 +231,11 @@ workflow GERMLINECNVCALLER_COHORT {
 
     // ---- Per-sample CNV QC outlier flag (cohort report) ---------------------
     ch_qc_in = ch_recur_vcfs.map { vcfs -> [[id: val_pon_name], vcfs] }
-    ch_qc_segdup = ch_segmental_duplications.map { _meta, bed -> bed }.ifEmpty([])
+    // Derive the segdup BED from params (a fresh reusable value): the
+    // ch_segmental_duplications channel is already consumed upstream
+    // (INDEXFEATUREFILE_SEGDUP / ANNOTATEINTERVALS), so re-mapping it here
+    // drains to empty and the LCR / segdup-exemption logic silently no-ops.
+    ch_qc_segdup = params.gcnv_segmental_duplications ? file(params.gcnv_segmental_duplications, checkIfExists: true) : []
     ch_qc_blacklist = params.qc_blacklist_bed ? file(params.qc_blacklist_bed, checkIfExists: true) : []
     CNV_QC_OUTLIER(ch_qc_in, ch_qc_segdup, ch_qc_blacklist)
 
@@ -253,7 +257,7 @@ workflow GERMLINECNVCALLER_COHORT {
                          file(params.allelic_snp_vcf + '.tbi', checkIfExists: true)])
         : channel.value([[], []])
 
-    ch_loh_segdup = ch_segmental_duplications.map { _meta, bed -> bed }.ifEmpty([]).first()
+    ch_loh_segdup = params.gcnv_segmental_duplications ? file(params.gcnv_segmental_duplications, checkIfExists: true) : []
 
     ALLELIC_LOH(ch_loh_in, ch_fasta, ch_fai, ch_dict, ch_snp_loh, ch_loh_segdup)
 
