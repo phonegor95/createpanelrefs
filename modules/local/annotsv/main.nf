@@ -12,7 +12,7 @@ process ANNOTSV {
 
     output:
     tuple val(meta), path("*.annotsv.tsv"), emit: tsv, optional: true
-    path "versions.yml",                    emit: versions
+    tuple val("${task.process}"), val('annotsv'), eval("AnnotSV --version 2>&1 | head -n1 | sed 's/^AnnotSV //'"), topic: versions, emit: versions_annotsv
 
     when:
     task.ext.when == null || task.ext.when
@@ -32,20 +32,11 @@ process ANNOTSV {
     if [ ! -s ${prefix}.annotsv.tsv ]; then
         echo "[ANNOTSV] no SVs annotated for ${prefix}" >&2
     fi
-
-    cat <<-END_VERSIONS > versions.yml
-    "${task.process}":
-        AnnotSV: \$(AnnotSV --version 2>&1 | head -n1 | sed 's/^AnnotSV //')
-    END_VERSIONS
     """
 
     stub:
     def prefix = task.ext.prefix ?: "${meta.id}"
     """
     touch ${prefix}.annotsv.tsv
-    cat <<-END_VERSIONS > versions.yml
-    "${task.process}":
-        AnnotSV: 3.5.10
-    END_VERSIONS
     """
 }

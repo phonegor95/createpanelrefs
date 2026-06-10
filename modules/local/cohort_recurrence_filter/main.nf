@@ -15,7 +15,8 @@ process COHORT_RECURRENCE_FILTER {
     tuple val(meta), path("recurfilt/*.recurfilt.vcf.gz.tbi"),      emit: flagged_tbi
     tuple val(meta), path("recurfilt/*.recurfilt.pass.vcf.gz"),     emit: pass
     tuple val(meta), path("recurfilt/*.recurfilt.pass.vcf.gz.tbi"), emit: pass_tbi
-    path "versions.yml",                                            emit: versions
+    tuple val("${task.process}"), val('python'), eval("python3 --version | sed 's/Python //'"),       topic: versions, emit: versions_python
+    tuple val("${task.process}"), val('htslib'), eval("bgzip --version | head -n1 | sed 's/.* //'"), topic: versions, emit: versions_htslib
 
     when:
     task.ext.when == null || task.ext.when
@@ -37,7 +38,5 @@ process COHORT_RECURRENCE_FILTER {
         echo | gzip -c > recurfilt/\${s}.recurfilt.pass.vcf.gz
         touch recurfilt/\${s}.recurfilt.pass.vcf.gz.tbi
     done
-    echo '"${task.process}":' > versions.yml
-    echo '    python: 3.12.0' >> versions.yml
     """
 }

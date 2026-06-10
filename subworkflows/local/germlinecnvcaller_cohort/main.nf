@@ -175,6 +175,12 @@ workflow GERMLINECNVCALLER_COHORT {
             sample_dirs.collect { sample_dir ->
                 def sample_index = (sample_dir.name - 'SAMPLE_') as Integer
                 def sample_name = new File(sample_dir, 'sample_name.txt').text.trim()
+                // GATK gCNV can emit a doubled sample name ("S1_S1"). Collapse the
+                // exact "X_X" form back to a single id at the source so every
+                // downstream output (postprocess dir, filtered_segments, recurfilt,
+                // LOH, AnnotSV) is named "S1" and the per-sample meta.id is uniform.
+                def dd = (sample_name =~ /^(.+)_\1$/)
+                if (dd.matches()) { sample_name = dd.group(1) }
                 // Infer sex from the inferred chrX ploidy so downstream segment
                 // filtering can apply sex-aware thresholds without a samplesheet
                 // column: chrX ploidy >= 2 => female, otherwise male.
@@ -240,8 +246,9 @@ workflow GERMLINECNVCALLER_COHORT {
     CNV_QC_OUTLIER(ch_qc_in, ch_qc_segdup, ch_qc_blacklist)
 
     // ---- Allelic LOH confirmation of PASS deletions (orthogonal to depth) ----
-    // Gated on params.allelic_snp_vcf. Join each PASS VCF (doubled sample id)
-    // back to its alignment (clean meta.id) for CollectAllelicCounts.
+    // Gated on params.allelic_snp_vcf. Join each PASS VCF back to its alignment
+    // (by sample id) for CollectAllelicCounts. Sample ids are uniform because the
+    // gCNV sample name is de-doubled at the source (see flatMap above).
     ch_loh_pass = COHORT_RECURRENCE_FILTER.out.pass
         .map { _meta, pass_files -> (pass_files instanceof List) ? pass_files : [pass_files] }
         .flatten()
@@ -249,8 +256,8 @@ workflow GERMLINECNVCALLER_COHORT {
 
     ch_loh_in = ch_loh_pass
         .combine(ch_reads_index.map { m, aln, idx -> [m.id, aln, idx] })
-        .filter { doubled, _vcf, sid, _aln, _idx -> doubled == sid || doubled == "${sid}_${sid}" }
-        .map { doubled, vcf, _sid, aln, idx -> [[id: doubled], vcf, aln, idx] }
+        .filter { sid_vcf, _vcf, sid_aln, _aln, _idx -> sid_vcf == sid_aln }
+        .map { sid, vcf, _sid, aln, idx -> [[id: sid], vcf, aln, idx] }
 
     ch_snp_loh = params.allelic_snp_vcf
         ? channel.value([file(params.allelic_snp_vcf, checkIfExists: true),

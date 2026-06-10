@@ -18,7 +18,7 @@ process ALLELIC_LOH {
     tuple val(meta), path("*.lohpass.vcf.gz"),         emit: lohpass
     tuple val(meta), path("*.lohpass.vcf.gz.tbi"),     emit: lohpass_tbi
     tuple val(meta), path("*.lohflagged.vcf.gz"),      emit: flagged
-    path "versions.yml",                               emit: versions
+    tuple val("${task.process}"), val('gatk4'), eval("gatk --version | sed -n '/GATK.*v/s/.*v//p'"), topic: versions, emit: versions_gatk4
 
     when:
     task.ext.when == null || task.ext.when
@@ -31,7 +31,8 @@ process ALLELIC_LOH {
     """
     # 1. Deletion regions from the PASS VCF -> BED (0-based start).
     zcat ${pass_vcf} | awk 'BEGIN{OFS="\t"} !/^#/ && \$5=="<DEL>"{
-        end=\$2; n=split(\$8,info,";"); for(i=1;i<=n;i++){ if(info[i] ~ /^END=/){ e=info[i]; sub("END=","",e); end=e } }
+        end=""; n=split(\$8,info,";"); for(i=1;i<=n;i++){ if(info[i] ~ /^END=/){ e=info[i]; sub("END=","",e); end=e } }
+        if(end=="" || end+0 <= \$2){ print "[ALLELIC_LOH] skipping DEL without valid END: "\$1":"\$2 > "/dev/stderr"; next }
         nf=split(\$9,fmt,":"); split(\$10,val,":"); cn=".";
         for(i=1;i<=nf;i++){ if(fmt[i]=="CN") cn=val[i] }
         print \$1, \$2-1, end, cn
@@ -58,11 +59,6 @@ process ALLELIC_LOH {
 
     bgzip -f ${prefix}.lohflagged.vcf && tabix -p vcf -f ${prefix}.lohflagged.vcf.gz
     bgzip -f ${prefix}.lohpass.vcf    && tabix -p vcf -f ${prefix}.lohpass.vcf.gz
-
-    cat <<-END_VERSIONS > versions.yml
-    "${task.process}":
-        gatk4: \$(gatk --version 2>&1 | sed -n 's/^The Genome Analysis Toolkit (GATK) v//p')
-    END_VERSIONS
     """
 
     stub:
@@ -71,7 +67,5 @@ process ALLELIC_LOH {
     echo -e "sample\tchrom\tstart\tend\tCN\tcovered_SNPs\thet_sites\thet_rate\tLOH_status" > ${prefix}.loh.tsv
     echo | gzip -c > ${prefix}.lohpass.vcf.gz;    touch ${prefix}.lohpass.vcf.gz.tbi
     echo | gzip -c > ${prefix}.lohflagged.vcf.gz
-    echo '"${task.process}":' > versions.yml
-    echo '    gatk4: 4.6.1.0' >> versions.yml
     """
 }

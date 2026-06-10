@@ -133,8 +133,4 @@ print("CNV QC: %d samples, %d flagged as outliers (K=%.1f MAD)" % (len(samps), n
 for key, lab in (("n", "total_calls"), ("lcr", "LCR_calls"), ("cn0", "CN0_calls")):
     med, m, t = thr[key]
     print("  %-11s median=%.0f MAD=%.0f flag>%.0f" % (lab, med, m, t))
-
-with open("versions.yml", "w") as vf:
-    py = "%d.%d.%d" % (__import__("sys").version_info[:3])
-    vf.write('"${task.process}":\\n')
-    vf.write("    python: %s\\n" % py)
+# Tool versions are emitted via the Nextflow `versions` topic (see main.nf).

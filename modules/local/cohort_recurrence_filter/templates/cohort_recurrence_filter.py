@@ -154,7 +154,9 @@ for v in vcfs:
             else:
                 f[6] = "PASS" if f[6] in (".", "") else f[6]
             fo.write("\\t".join(f) + "\\n")
-            if f[6] != "CohortRecurrent":
+            # PASS-only output: emit genuinely-passing records, not merely
+            # "not CohortRecurrent" (a pre-existing non-PASS FILTER must not leak).
+            if f[6] == "PASS":
                 fp.write("\\t".join(f) + "\\n")
                 npass += 1
     for path in (soft, passf):
@@ -169,11 +171,4 @@ for sid, ntot, nflag, npass in stats:
     tt += ntot
     tf += nflag
 print("%-34s %6d %8d %6d" % ("TOTAL", tt, tf, tt - tf))
-
-with open("versions.yml", "w") as vf:
-    py = "%d.%d.%d" % (__import__("sys").version_info[:3])
-    bg = subprocess.run(["bgzip", "--version"], capture_output=True, text=True)
-    bgv = bg.stdout.splitlines()[0].split()[-1] if bg.stdout else "unknown"
-    vf.write('"${task.process}":\\n')
-    vf.write("    python: %s\\n" % py)
-    vf.write("    htslib: %s\\n" % bgv)
+# Tool versions are emitted via the Nextflow `versions` topic (see main.nf).

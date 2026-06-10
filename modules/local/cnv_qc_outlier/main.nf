@@ -13,7 +13,7 @@ process CNV_QC_OUTLIER {
 
     output:
     tuple val(meta), path("cnv_qc_per_sample.tsv"), emit: report
-    path "versions.yml",                            emit: versions
+    tuple val("${task.process}"), val('python'), eval("python3 --version | sed 's/Python //'"), topic: versions, emit: versions_python
 
     when:
     task.ext.when == null || task.ext.when
@@ -25,7 +25,5 @@ process CNV_QC_OUTLIER {
     stub:
     """
     echo "sample\ttotal_calls\tDEL\tDUP\tCN0\tLCR_calls\tLCR_frac\tCNV_Mb\tflag\tflag_reason" > cnv_qc_per_sample.tsv
-    echo '"${task.process}":' > versions.yml
-    echo '    python: 3.12.0' >> versions.yml
     """
 }
