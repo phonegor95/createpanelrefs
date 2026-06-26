@@ -15,8 +15,9 @@ process COHORT_RECURRENCE_FILTER {
     tuple val(meta), path("recurfilt/*.recurfilt.vcf.gz.tbi"),      emit: flagged_tbi
     tuple val(meta), path("recurfilt/*.recurfilt.pass.vcf.gz"),     emit: pass
     tuple val(meta), path("recurfilt/*.recurfilt.pass.vcf.gz.tbi"), emit: pass_tbi
-    tuple val("${task.process}"), val('python'), eval("python3 --version | sed 's/Python //'"),       topic: versions, emit: versions_python
-    tuple val("${task.process}"), val('htslib'), eval("bgzip --version | head -n1 | sed 's/.* //'"), topic: versions, emit: versions_htslib
+    // python3 template ⇒ eval() outputs are not permitted (Bash-only); container is pinned by hash so versions are static.
+    tuple val("${task.process}"), val('python'), val('3.12.4'), topic: versions, emit: versions_python
+    tuple val("${task.process}"), val('htslib'), val('1.20'),   topic: versions, emit: versions_htslib
 
     when:
     task.ext.when == null || task.ext.when

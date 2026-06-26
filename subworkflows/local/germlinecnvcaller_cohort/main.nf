@@ -15,6 +15,10 @@ include { BCFTOOLS_FILTER_GCNV                                         } from '.
 include { COHORT_RECURRENCE_FILTER                                     } from '../../../modules/local/cohort_recurrence_filter'
 include { CNV_QC_OUTLIER                                               } from '../../../modules/local/cnv_qc_outlier'
 include { ALLELIC_LOH                                                  } from '../../../modules/local/allelic_loh'
+include { ALLELIC_RESCUE                                               } from '../../../modules/local/allelic_rescue'
+include { ALLELIC_RESCUE_COHORT                                        } from '../../../modules/local/allelic_rescue_cohort'
+include { HBA_CLASSIFIER                                               } from '../../../modules/local/hba_classifier'
+include { GEMINI_VERDICT                                               } from '../../../modules/local/gemini_verdict'
 include { ANNOTSV                                                      } from '../../../modules/local/annotsv'
 include { KNOTANNOTSV as KNOTANNOTSV_HTML                              } from '../../../modules/nf-core/knotannotsv'
 include { KNOTANNOTSV as KNOTANNOTSV_XLSM                              } from '../../../modules/nf-core/knotannotsv'
@@ -266,15 +270,25 @@ workflow GERMLINECNVCALLER_COHORT {
     // Inner-join PASS VCF <-> alignment by sample id. remainder:true keeps an
     // unmatched PASS VCF (aln == null) so we can warn instead of silently
     // dropping it from allelic-LOH / AnnotSV.
+    // NB: join(remainder:true) emits a SHORT tuple for an unmatched left entry
+    // (e.g. [id, vcf, null] -- 3 elements, no idx slot), so a fixed-arity closure
+    // like { id, vcf, aln, idx -> } throws MissingMethodException on it and aborts
+    // the whole run. Take a single list param and index defensively so an unmatched
+    // PASS VCF is warned-and-dropped instead. (Triggered when a CRAM's @RG SM tag
+    // != its samplesheet id -- e.g. AG_01 vs AG20260112N1_01 -- which leaves the
+    // gCNV sample_name de-doubling unable to reconcile to a valid samplesheet id.)
     ch_loh_in = ch_loh_pass
         .join(ch_reads_index.map { m, aln, idx -> [m.id, aln, idx] }, remainder: true)
-        .filter { id, vcf, aln, _idx ->
+        .filter { row ->
+            def id  = row[0]
+            def vcf = row.size() > 1 ? row[1] : null
+            def aln = row.size() > 2 ? row[2] : null
             if (vcf && !aln) {
                 log.warn("ALLELIC_LOH: PASS VCF for sample '${id}' has no matching alignment (sample-id reconciliation failed); skipping it for allelic-LOH/AnnotSV.")
             }
             vcf && aln
         }
-        .map { id, vcf, aln, idx -> [[id: id], vcf, aln, idx] }
+        .map { row -> [[id: row[0]], row[1], row[2], row[3]] }
 
     ch_snp_loh = params.allelic_snp_vcf
         ? channel.value([file(params.allelic_snp_vcf, checkIfExists: true),
@@ -284,6 +298,64 @@ workflow GERMLINECNVCALLER_COHORT {
     ch_loh_segdup = params.gcnv_segmental_duplications ? file(params.gcnv_segmental_duplications, checkIfExists: true) : []
 
     ALLELIC_LOH(ch_loh_in, ch_fasta, ch_fai, ch_dict, ch_snp_loh, ch_loh_segdup)
+
+    // ---- Route-A allelic/zygosity CNV rescue (segdup-masked focal dels) ------
+    // Depth-based gCNV is structurally blind to deletions embedded in segmental
+    // duplications (the alpha-globin -a3.7/-a4.2 case): the paralog inflates the
+    // bin depth so the half-copy dip never appears. The per-SNP allelic axis still
+    // sees the forced hemizygosity. This is a PROACTIVE, whole-genome rescue (it
+    // calls events gCNV never made), distinct from ALLELIC_LOH (which only
+    // confirms/refutes gCNV's own PASS deletions). Opt-in (genome-wide allelic
+    // counts are heavy) and needs the common-SNP panel.
+    ch_rescue_cohort = channel.empty()
+    if (params.allelic_rescue && params.allelic_snp_vcf) {
+        // Join each sample's (recal) alignment to its gCNV genotyped segments (for
+        // depth-concordance annotation) by sample id.
+        ch_rescue_in = ch_reads_index
+            .map { m, aln, idx -> [m.id, aln, idx] }
+            .join(GATK4_POSTPROCESSGERMLINECNVCALLS.out.genotyped_segments.map { m, vcf -> [m.id, vcf] })
+            .map { id, aln, idx, vcf -> [[id: id], aln, idx, vcf] }
+
+        ALLELIC_RESCUE(ch_rescue_in, ch_fasta, ch_fai, ch_dict, ch_snp_loh, ch_loh_segdup)
+
+        // Cohort-contrast specificity layer: keep focal hemizygous LOH that is
+        // PRIVATE vs the cohort (the locus is heterozygous in most other samples),
+        // drop systematic segdup/ROH that is homozygous in ~everyone.
+        ch_rescue_cohort_in = ALLELIC_RESCUE.out.tsv.map { _m, t -> t }.collect()
+            .combine(ALLELIC_RESCUE.out.hetcounts.map { _m, h -> h }.collect())
+            .map { tsvs, het -> [[id: val_pon_name], tsvs, het] }
+
+        ALLELIC_RESCUE_COHORT(ch_rescue_cohort_in)
+        ch_rescue_cohort = ALLELIC_RESCUE_COHORT.out.tsv
+    }
+
+    // ---- HBA (alpha-globin) classifier --------------------------------------
+    // Per-sample alpha-thalassemia classifier in the Sentieon segdup-caller YAML
+    // schema (a3.7 / a4.2 / non-duplication CN + clinical interpretation), built
+    // from GATK depth + allelic-LOH + JUNCTION-anchored breakpoints. Fuses the
+    // three axes (depth blind in the paralog core; junctions subtype -a3.7/--SEA/
+    // triplication and reject segdup-edge artifacts; -a4.2 stays depth-silent and
+    // is reported as a Sentieon-reference discordance). Opt-in; needs the SNP panel.
+    ch_hba = channel.empty()
+    ch_hba_verdict = channel.empty()
+    if (params.hba_classifier && params.allelic_snp_vcf) {
+        HBA_CLASSIFIER(ch_reads_index, ch_fasta, ch_fai, ch_dict, ch_snp_loh)
+        ch_hba = HBA_CLASSIFIER.out.yaml
+
+        // ---- Independent LLM second-opinion, MANUAL-REVIEW samples only ------
+        // The classifier runs cohort-wide, but only the samples it flags
+        // "Requires manual review" (junction-supported SV, copy-neutral depth --
+        // the genuinely ambiguous calls) are escalated to the Gemini API for an
+        // adversarial AGREE/CAVEAT/DISAGREE verdict. Clean Normals are not sent
+        // (no API call, no data egress). Advisory only -- never alters the call;
+        // needs the GEMINI_API_KEY secret. Opt-in.
+        if (params.hba_gemini_verdict) {
+            ch_hba_review = HBA_CLASSIFIER.out.yaml
+                .filter { meta, yaml -> yaml.text.contains('Requires manual review') }
+            GEMINI_VERDICT(ch_hba_review)
+            ch_hba_verdict = GEMINI_VERDICT.out.verdict
+        }
+    }
 
     // ---- Per-sample AnnotSV annotation of the survivors ---------------------
     // When allelic LOH ran, annotate its hard-filtered output (no_LOH deletions
@@ -326,4 +398,7 @@ workflow GERMLINECNVCALLER_COHORT {
     cnv_qc               = CNV_QC_OUTLIER.out.report
     allelic_loh          = ALLELIC_LOH.out.tsv
     allelic_loh_pass     = ALLELIC_LOH.out.lohpass
+    allelic_rescue       = ch_rescue_cohort
+    hba_classifier       = ch_hba
+    hba_gemini_verdict   = ch_hba_verdict
 }

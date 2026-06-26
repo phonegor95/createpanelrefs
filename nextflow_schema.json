@@ -372,10 +372,45 @@
                     "description": "Hard-remove CN=1 deletions that retain heterozygosity (no_LOH) from the annotated call set. Segmental-duplication-overlapping calls are exempt (LOH test invalid there). When false, no_LOH calls are only soft-flagged.",
                     "fa_icon": "fas fa-filter"
                 },
+                "allelic_rescue": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Enable the route-A allelic/zygosity CNV rescue: proactively recovers focal deletions embedded in segmental duplications (e.g. alpha-globin -a3.7/-a4.2) that depth-based gCNV cannot detect, by scanning for focal hemizygous loss-of-heterozygosity runs in a heterozygous background and contrasting against the cohort. Genome-wide allelic counts are heavy, so off by default; requires a COMMON-SNP panel (e.g. gnomAD AF>=0.1) as allelic_snp_vcf.",
+                    "fa_icon": "fas fa-dna"
+                },
+                "hba_classifier": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Enable the HBA alpha-globin classifier: per-sample alpha-thalassemia call in the Sentieon segdup-caller YAML schema (a3.7 / a4.2 / non-duplication copy number + clinical interpretation), built from GATK region depth, allelic loss-of-heterozygosity, and junction-anchored breakpoint reads. Confidently calls -a3.7 (depth dip + 3.7 kb junction), flags triplications (tandem junction) and --SEA (20 kb junction), and reports -a4.2 (segdup-internal, depth/junction-silent) as a cross-check discordance. Requires a common-SNP panel as allelic_snp_vcf.",
+                    "fa_icon": "fas fa-dna"
+                },
+                "hba_sentieon_dir": {
+                    "type": "string",
+                    "format": "directory-path",
+                    "description": "Optional Sentieon segdup-caller results directory (segdup_all_results) to cross-check the HBA classifier against, as a REFERENCE (not ground truth). Each sample's <dir>/<sample>/<sample>.yaml is compared per compartment and discordances are reported.",
+                    "fa_icon": "fas fa-folder-open"
+                },
                 "gatk_container": {
                     "type": "string",
                     "description": "Override the GATK container with a site-local Singularity image (.sif) path to avoid a biocontainer pull (used by the allelic LOH step).",
                     "fa_icon": "fas fa-box"
+                },
+                "hba_gemini_verdict": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "Enable an independent LLM second-opinion on the HBA call. Only samples the classifier flags 'Requires manual review' (junction-supported structural variant, copy-neutral depth) are escalated: their HBA.yaml is sent to the Gemini API for an adversarial AGREE/CAVEAT/DISAGREE verdict. Advisory only -- never alters the call. Requires the GEMINI_API_KEY secret (nextflow secrets set GEMINI_API_KEY ...). NOTE: sends per-sample copy-number/evidence YAML to an external API.",
+                    "fa_icon": "fas fa-robot"
+                },
+                "gemini_model": {
+                    "type": "string",
+                    "default": "gemini-3.5-flash",
+                    "description": "Gemini model id used for the HBA second-opinion verdict.",
+                    "fa_icon": "fas fa-robot"
+                },
+                "gemini_proxy": {
+                    "type": "string",
+                    "description": "Optional http(s) proxy URL for Gemini API egress (e.g. http://127.0.0.1:17891).",
+                    "fa_icon": "fas fa-network-wired"
                 }
             }
         },

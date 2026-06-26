@@ -13,7 +13,8 @@ process CNV_QC_OUTLIER {
 
     output:
     tuple val(meta), path("cnv_qc_per_sample.tsv"), emit: report
-    tuple val("${task.process}"), val('python'), eval("python3 --version | sed 's/Python //'"), topic: versions, emit: versions_python
+    // python3 template ⇒ eval() outputs are not permitted (Bash-only); container is pinned by hash so the version is static.
+    tuple val("${task.process}"), val('python'), val('3.12.4'), topic: versions, emit: versions_python
 
     when:
     task.ext.when == null || task.ext.when
