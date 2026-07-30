@@ -62,6 +62,14 @@ The reference file contains coverage information normalized across the cohort an
   - `recurfilt/`: Cohort-recurrence filter summary (local postprocess extension).
   - `annotsv/`, `knotannotsv/`: AnnotSV TSV and knotAnnotSV HTML/XLSM reports (when `--annotsv_annotations` is set).
   - `allelic_loh/`: Allelic-LOH confirmation of PASS deletions (when `--allelic_snp_vcf` is set).
+  - `allelic_rescue/`: Route-A allelic/zygosity rescue of segdup-masked focal deletions (when `--allelic_rescue` is set).
+    - `*.rescue.tsv` / `*.rescue.vcf.gz`: Per-sample focal hemizygous-LOH candidates.
+    - `cohort_allelic_contrast.tsv`: Cohort-contrast specificity layer over those candidates.
+    - `*.private.vcf.gz`: Candidates that are private to one sample against a heterozygous cohort background.
+  - `hba/`: HBA alpha-globin classifier (when `--hba_classifier` is set).
+    - `*.HBA.yaml`: Per-sample alpha-thalassemia call in the Sentieon segdup-caller schema.
+    - `*.HBA.crosscheck.tsv`: Per-compartment discordances against `--hba_sentieon_dir`, when supplied.
+    - `verdict/*.HBA.verdict.md`: Advisory LLM second opinion on the manual-review samples only (when `--hba_gemini_verdict` is set). Never alters the call.
   - `qc/`: Per-sample CNV QC outlier report.
   - `readcounts/`
     - `*.hdf5|.tsv`: Read count statistics for each sample.
@@ -69,6 +77,12 @@ The reference file contains coverage information normalized across the cohort an
 </details>
 
 The model name defaults to `germlinecnvcaller` when `--gcnv_model_name` is not specified.
+
+> [!NOTE]
+> The cohort-recurrence filter needs at least `--recur_min_cohort` peer samples (default 5) to produce a meaningful frequency. Below that it degrades to a no-op: nothing is flagged `CohortRecurrent`, every call is emitted as PASS, and a warning is printed.
+
+> [!WARNING]
+> `--hba_gemini_verdict` sends each manual-review sample's copy-number and evidence YAML to the Google Gemini API. This is external data egress and is off by default.
 
 [GATK](https://github.com/broadinstitute/gatk) is a toolkit which offers a wide variety of tools with a primary focus on variant discovery and genotyping.
 GATK's GermlineCNVCaller is used to analyze a cohort of samples.

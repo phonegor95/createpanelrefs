@@ -158,15 +158,22 @@ workflow GERMLINECNVCALLER_COHORT {
 
     GATK4_GERMLINECNVCALLER(ch_cnvcaller_in)
 
+    // Sort the shard directories by name (they are named after the scattered
+    // interval list, e.g. "temp_0001_of_0024"). A bare .collect() would order
+    // them by task-completion order, which varies between runs and between a
+    // run and its -resume, so the same cohort could be postprocessed with the
+    // shards in a different order each time. GATK pairs model_shard[i] with
+    // call_shard[i], so both lists must be sorted the same way -- same reason
+    // the read counts are sorted above.
     GATK4_GERMLINECNVCALLER.out.cohortmodel
         .map { _meta, model_dir -> model_dir }
-        .collect()
+        .toSortedList { a, b -> a.name <=> b.name }
         .map { model_dirs -> [model_shards: model_dirs] }
         .set { ch_gcnv_model_shards }
 
     GATK4_GERMLINECNVCALLER.out.cohortcalls
         .map { _meta, calls_dir -> calls_dir }
-        .collect()
+        .toSortedList { a, b -> a.name <=> b.name }
         .map { call_dirs -> [call_shards: call_dirs] }
         .set { ch_gcnv_call_shards }
 
@@ -178,10 +185,21 @@ workflow GERMLINECNVCALLER_COHORT {
         .combine(ch_aln_ids)
         .flatMap { _meta, ploidy_calls, ids_map ->
             def valid_ids = ids_map.valid_ids
-            def sample_dirs = ploidy_calls.toFile()
-                .listFiles()
+            // listFiles() returns null when the path is not a directory, which
+            // would NPE here; and an empty result would silently drop every
+            // sample, leaving a green run with no postprocess output at all.
+            // Both are unrecoverable, so fail loudly instead.
+            def calls_dir = ploidy_calls.toFile()
+            def entries = calls_dir.listFiles()
+            if (entries == null) {
+                error("GERMLINECNVCALLER_COHORT: contig-ploidy calls path '${calls_dir}' is not a readable directory; cannot fan out per sample.")
+            }
+            def sample_dirs = entries
                 .findAll { it.isDirectory() && it.name.startsWith('SAMPLE_') }
                 .sort { a, b -> (a.name - 'SAMPLE_') as Integer <=> (b.name - 'SAMPLE_') as Integer }
+            if (!sample_dirs) {
+                error("GERMLINECNVCALLER_COHORT: no SAMPLE_* subdirectories under '${calls_dir}'; DetermineGermlineContigPloidy produced no per-sample calls, so there is nothing to postprocess.")
+            }
             sample_dirs.collect { sample_dir ->
                 def sample_index = (sample_dir.name - 'SAMPLE_') as Integer
                 def sample_name = new File(sample_dir, 'sample_name.txt').text.trim()
@@ -321,9 +339,22 @@ workflow GERMLINECNVCALLER_COHORT {
         // Cohort-contrast specificity layer: keep focal hemizygous LOH that is
         // PRIVATE vs the cohort (the locus is heterozygous in most other samples),
         // drop systematic segdup/ROH that is homozygous in ~everyone.
-        ch_rescue_cohort_in = ALLELIC_RESCUE.out.tsv.map { _m, t -> t }.collect()
-            .combine(ALLELIC_RESCUE.out.hetcounts.map { _m, h -> h }.collect())
-            .map { tsvs, het -> [[id: val_pon_name], tsvs, het] }
+        // Both sides are collect()ed LISTS. combine() spreads a bare list into
+        // separate tuple elements, so combining two of them yields one flat
+        // 2N-element tuple and any fixed-arity closure downstream blows up with
+        // "Invalid method invocation `call`". Wrap the second list in a map so
+        // it stays a single element -- same fix as ch_recur_in above.
+        ch_rescue_cohort_in = ALLELIC_RESCUE.out.tsv
+            .map { _m, t -> t }
+            .collect()
+            .map { tsvs -> [[id: val_pon_name], tsvs] }
+            .combine(
+                ALLELIC_RESCUE.out.hetcounts
+                    .map { _m, h -> h }
+                    .collect()
+                    .map { hets -> [hetcounts: hets] }
+            )
+            .map { meta, tsvs, het_map -> [meta, tsvs, het_map.hetcounts] }
 
         ALLELIC_RESCUE_COHORT(ch_rescue_cohort_in)
         ch_rescue_cohort = ALLELIC_RESCUE_COHORT.out.tsv
@@ -339,6 +370,17 @@ workflow GERMLINECNVCALLER_COHORT {
     ch_hba = channel.empty()
     ch_hba_verdict = channel.empty()
     if (params.hba_classifier && params.allelic_snp_vcf) {
+        // The alpha-globin cn_regions, junction anchors and SNP window are
+        // hard-coded hg38 coordinates (chr16:169k-178k). On any other build they
+        // profile the wrong locus and the classifier would emit a confident but
+        // meaningless call, so refuse up front rather than fail silently.
+        if (params.annotsv_genome_build != 'GRCh38') {
+            error(
+                "--hba_classifier requires GRCh38/hg38: the alpha-globin coordinates in " +
+                "modules/local/hba_classifier are hard-coded hg38, but " +
+                "--annotsv_genome_build is '${params.annotsv_genome_build}'."
+            )
+        }
         HBA_CLASSIFIER(ch_reads_index, ch_fasta, ch_fai, ch_dict, ch_snp_loh)
         ch_hba = HBA_CLASSIFIER.out.yaml
 

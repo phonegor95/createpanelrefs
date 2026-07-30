@@ -329,6 +329,13 @@
                     "description": "Cohort-recurrence any-overlap arm: flag a call as CohortRecurrent if the fraction of the cohort touching it on any base is >= this value. Catches ragged-breakpoint paralog artifacts that escape the reciprocal arm.",
                     "fa_icon": "fas fa-percent"
                 },
+                "recur_min_cohort": {
+                    "type": "integer",
+                    "default": 5,
+                    "minimum": 1,
+                    "description": "Minimum number of PEER samples (cohort size minus the carrier) required for the cohort-recurrence frequency to be considered meaningful. Below this the filter degrades to a no-op: nothing is flagged CohortRecurrent and every call is emitted as PASS, with a warning.",
+                    "fa_icon": "fas fa-users"
+                },
                 "annotsv_annotations": {
                     "type": "string",
                     "format": "directory-path",
@@ -403,7 +410,7 @@
                 },
                 "gemini_model": {
                     "type": "string",
-                    "default": "gemini-3.5-flash",
+                    "default": "gemini-3.6-flash",
                     "description": "Gemini model id used for the HBA second-opinion verdict.",
                     "fa_icon": "fas fa-robot"
                 },

@@ -47,16 +47,20 @@ def build_prompt(yaml_text):
 
 
 def call_gemini(prompt, model, api_key, proxy, timeout=120):
+    # The key goes in the x-goog-api-key HEADER, never in the query string: a
+    # URL travels through proxy access logs and exception traces in the clear,
+    # and --proxy means there is a real intermediary on this path.
     url = (f"https://generativelanguage.googleapis.com/v1beta/models/"
-           f"{model}:generateContent?key={api_key}")
+           f"{model}:generateContent")
     body = json.dumps({
         "contents": [{"parts": [{"text": prompt}]}],
-        # gemini-3.5-flash is a thinking model: thoughtsTokenCount counts against
+        # The flash models are thinking models: thoughtsTokenCount counts against
         # maxOutputTokens, so the cap must cover internal reasoning + the answer.
         "generationConfig": {"temperature": 0.2, "maxOutputTokens": 2048},
     }).encode()
     req = urllib.request.Request(url, data=body,
-                                 headers={"Content-Type": "application/json"})
+                                 headers={"Content-Type": "application/json",
+                                          "x-goog-api-key": api_key})
     if proxy:
         opener = urllib.request.build_opener(
             urllib.request.ProxyHandler({"https": proxy, "http": proxy}))
@@ -73,7 +77,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--sample", required=True)
     ap.add_argument("--yaml", required=True, help="per-sample HBA.yaml")
-    ap.add_argument("--model", default="gemini-3.5-flash")
+    ap.add_argument("--model", default="gemini-3.6-flash")
     ap.add_argument("--proxy", default="", help="http(s) proxy URL, optional")
     ap.add_argument("--out", required=True)
     a = ap.parse_args()

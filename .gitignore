@@ -10,3 +10,4 @@ null/
 .lineage/
 .nf-test*
 */nf-core/**/tests
+nf-*-reports.tsv

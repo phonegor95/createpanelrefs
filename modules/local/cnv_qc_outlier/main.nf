@@ -2,7 +2,7 @@ process CNV_QC_OUTLIER {
     tag "${meta.id}"
     label 'process_single'
 
-    container "${workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container
+    container "${workflow.containerEngine in ['singularity', 'apptainer']
         ? 'https://depot.galaxyproject.org/singularity/htslib_pysam_tabix_pip_variant-extractor:a12ef217eccf6ba8'
         : 'community.wave.seqera.io/library/htslib_pysam_tabix_pip_variant-extractor:a12ef217eccf6ba8'}"
 

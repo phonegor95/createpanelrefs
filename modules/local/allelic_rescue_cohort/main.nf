@@ -2,7 +2,9 @@ process ALLELIC_RESCUE_COHORT {
     tag "${meta.id}"
     label 'process_medium'
 
-    container "${params.gatk_container ?: 'https://depot.galaxyproject.org/singularity/gatk4:4.6.1.0--py310hdfd78af_0'}"
+    container "${params.gatk_container ?: (workflow.containerEngine in ['singularity', 'apptainer']
+        ? 'https://depot.galaxyproject.org/singularity/gatk4:4.6.1.0--py310hdfd78af_0'
+        : 'biocontainers/gatk4:4.6.1.0--py310hdfd78af_0')}"
 
     input:
     // meta carries the PoN name; lists are the collected per-sample outputs.

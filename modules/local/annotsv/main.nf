@@ -4,7 +4,16 @@ process ANNOTSV {
 
     // AnnotSV 3.5.10. Defaults to the biocontainer; override with
     // params.annotsv_container to reuse a site-local .sif and avoid a pull.
-    container "${params.annotsv_container ?: 'https://depot.galaxyproject.org/singularity/annotsv:3.5.10--py311hdfd78af_0'}"
+    // NB: the 3.5.10 build tag is "hdfd78af_0", NOT "py311hdfd78af_0" -- the
+    // latter 404s on depot.galaxyproject.org, so the default was unusable and
+    // ANNOTSV could only ever run via params.annotsv_container.
+    container "${params.annotsv_container ?: (workflow.containerEngine in ['singularity', 'apptainer']
+        ? 'https://depot.galaxyproject.org/singularity/annotsv:3.5.10--hdfd78af_0'
+        : 'biocontainers/annotsv:3.5.10--hdfd78af_0')}"
+    // AnnotSV rewrites a file inside its own annotation dependency tree at run
+    // time, which fails on a read-only Singularity image (as nf-core's own
+    // annotsv module documents).
+    containerOptions "${workflow.containerEngine in ['singularity', 'apptainer'] ? '--writable-tmpfs' : ''}"
 
     input:
     tuple val(meta), path(vcf)

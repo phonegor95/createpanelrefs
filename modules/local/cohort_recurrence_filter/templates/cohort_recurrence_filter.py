@@ -27,6 +27,7 @@ from collections import defaultdict
 T1  = float("${recip_threshold}")    # reciprocal-coverage arm
 COV = float("${recip_coverage}")     # coverage fraction defining "shared"
 T2  = float("${overlap_threshold}")  # any-overlap arm
+MIN_PEERS = int("${min_cohort}")     # min peers per call for a meaningful frequency
 SEXCHR = {"chrX", "chrY", "X", "Y"}
 
 OUTDIR = "recurfilt"
@@ -48,8 +49,9 @@ print("cohort: %d samples (%dF / %dM)" % (NALL, NSEX["F"], NSEX["M"]))
 FILTLINE = (
     '##FILTER=<ID=CohortRecurrent,Description="Cohort-recurrent CNV/artifact '
     '(two-arm): reciprocal-coverage(>=%.2f) freq >= %.2f, OR any-overlap freq '
-    '>= %.2f. Autosomes pooled over the whole cohort; chrX/chrY split by '
-    'inferred sex.">\\n' % (COV, T1, T2)
+    '>= %.2f. Frequencies are over the PEER samples (the carrier itself is '
+    'excluded from numerator and denominator). Autosomes pooled over the whole '
+    'cohort; chrX/chrY split by inferred sex.">\\n' % (COV, T1, T2)
 )
 
 
@@ -104,28 +106,47 @@ for k in grp:
 
 
 def freqs(c):
+    """Fraction of the OTHER samples in this call's group that share / touch it.
+
+    The call's own sample is excluded from both numerator and denominator. With
+    self-counting a private call always scores 1/denom, so at the default
+    T1=0.5 a 2-sample cohort would flag every single call, and a lone female in
+    a male cohort would have every chrX call flagged against a denominator of 1.
+    """
     key, denom = grpkey(c)
+    peers = denom - 1
+    if peers < 1:
+        return 0.0, 0.0
     g = grp[key]
     need = COV * (c["end"] - c["start"])
     rec, ovl = set(), set()
     for o in g:
         if o["start"] >= c["end"]:
             break
-        if o["end"] <= c["start"]:
+        if o["end"] <= c["start"] or o["samp"] == c["samp"]:
             continue
         inter = min(o["end"], c["end"]) - max(o["start"], c["start"])
         ovl.add(o["samp"])
         if inter >= need:
             rec.add(o["samp"])
-    return len(rec) / denom, len(ovl) / denom
+    return len(rec) / peers, len(ovl) / peers
 
 
+# A recurrence frequency over a handful of peers is quantised too coarsely to
+# mean anything (with 3 peers the only reachable values are 0, .33, .67, 1).
+# Rather than flag near-arbitrarily, degrade to a no-op and say so loudly.
 flag = set()
-for c in calls:
-    rc, ao = freqs(c)
-    if rc >= T1 or ao >= T2:
-        flag.add((c["samp"], c["chrom"], c["start"]))
-print("flagged %d / %d calls as CohortRecurrent" % (len(flag), len(calls)))
+if NALL - 1 < MIN_PEERS:
+    print("WARNING: %d-sample cohort leaves only %d peer(s) per call, below the "
+          "minimum of %d (params.recur_min_cohort). The recurrence frequency is "
+          "not meaningful at this size: NO calls will be flagged CohortRecurrent "
+          "and every call is emitted as PASS." % (NALL, NALL - 1, MIN_PEERS))
+else:
+    for c in calls:
+        rc, ao = freqs(c)
+        if rc >= T1 or ao >= T2:
+            flag.add((c["samp"], c["chrom"], c["start"]))
+    print("flagged %d / %d calls as CohortRecurrent" % (len(flag), len(calls)))
 
 # --- write per-sample soft-flagged + pass-only VCFs ------------------------
 stats = []

@@ -3,7 +3,9 @@ process GEMINI_VERDICT {
     label 'process_single'
 
     // python3 (stdlib only) is enough; reuse the GATK image already pulled.
-    container "${params.gatk_container ?: 'https://depot.galaxyproject.org/singularity/gatk4:4.6.1.0--py310hdfd78af_0'}"
+    container "${params.gatk_container ?: (workflow.containerEngine in ['singularity', 'apptainer']
+        ? 'https://depot.galaxyproject.org/singularity/gatk4:4.6.1.0--py310hdfd78af_0'
+        : 'biocontainers/gatk4:4.6.1.0--py310hdfd78af_0')}"
     // GEMINI_API_KEY is injected from Nextflow secrets (never written to .command.sh):
     //   nextflow secrets set GEMINI_API_KEY "<key>"
     secret 'GEMINI_API_KEY'
@@ -19,7 +21,7 @@ process GEMINI_VERDICT {
 
     script:
     def prefix = task.ext.prefix ?: "${meta.id}"
-    def model  = params.gemini_model ?: 'gemini-3.5-flash'
+    def model  = params.gemini_model ?: 'gemini-3.6-flash'
     def proxy  = params.gemini_proxy ? "--proxy ${params.gemini_proxy}" : ''
     """
     gemini_verdict.py \\

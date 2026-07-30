@@ -90,6 +90,11 @@
                         "git_sha": "f8001d415ee08634fee5019bd15c7fdaa2a1915d",
                         "installed_by": ["bam_create_som_pon_gatk"]
                     },
+                    "gatk4/postprocessgermlinecnvcalls": {
+                        "branch": "master",
+                        "git_sha": "6d46786420b4d7bc88eba026eb389c0c5535d120",
+                        "installed_by": ["modules"]
+                    },
                     "gatk4/preprocessintervals": {
                         "branch": "master",
                         "git_sha": "6d46786420b4d7bc88eba026eb389c0c5535d120",
@@ -103,6 +108,11 @@
                     "gawk": {
                         "branch": "master",
                         "git_sha": "6d46786420b4d7bc88eba026eb389c0c5535d120",
+                        "installed_by": ["modules"]
+                    },
+                    "knotannotsv": {
+                        "branch": "master",
+                        "git_sha": "fed36ffa9a74871cf68840cc4def0d9239b388cb",
                         "installed_by": ["modules"]
                     },
                     "mosdepth": {

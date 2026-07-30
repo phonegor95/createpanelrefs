@@ -57,8 +57,28 @@ process GATK4_DETERMINEGERMLINECONTIGPLOIDY {
 
     stub:
     prefix = task.ext.prefix ?: "${meta.id}"
+    // Upstream's stub just touches two empty FILES. GERMLINECNVCALLER_COHORT
+    // fans out per sample by listing SAMPLE_*/ inside the calls DIRECTORY and
+    // reading sample_name.txt + contig_ploidy.tsv from each, so an empty file
+    // makes the entire postprocess chain vanish silently under -stub-run.
+    // Emit the real directory layout instead, derived from the input
+    // read-count file names, and alternate the inferred chrX ploidy so both
+    // the female and male branches of the sex-aware filter get exercised.
     """
-    touch ${prefix}-calls
-    touch ${prefix}-model
+    mkdir -p ${prefix}-calls ${prefix}-model
+
+    i=0
+    for c in ${counts}; do
+        s=\$(basename \$c); s=\${s%%.*}
+        d=${prefix}-calls/SAMPLE_\$i
+        mkdir -p \$d
+        echo \$s > \$d/sample_name.txt
+        if [ \$((i % 2)) -eq 0 ]; then xp=2; else xp=1; fi
+        printf 'CONTIG\\tPLOIDY\\tPLOIDY_GQ\\n'  > \$d/contig_ploidy.tsv
+        printf 'chr21\\t2\\t100\\n'             >> \$d/contig_ploidy.tsv
+        printf 'chrX\\t%s\\t100\\n' "\$xp"      >> \$d/contig_ploidy.tsv
+        printf 'chrY\\t0\\t100\\n'              >> \$d/contig_ploidy.tsv
+        i=\$((i+1))
+    done
     """
 }

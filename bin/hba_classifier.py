@@ -261,7 +261,10 @@ def main():
     ap.add_argument("--allelic-counts", default="", help="CollectAllelicCounts TSV over the HBA locus")
     ap.add_argument("--breakpoints", default="", help="breakpoint-read stats TSV (split/bigclip/disc<TAB>count)")
     ap.add_argument("--psv-pileup", dest="psv_pileup", default="", help="samtools mpileup over the HBA2/HBA1 PSV loci (advisory HBA2-dosage axis)")
-    ap.add_argument("--variants-vcf", default="", help="path recorded in the YAML 'Variants' field")
+    ap.add_argument("--variants-vcf", default="",
+                    help="provenance only: path recorded verbatim in the YAML 'Variants' "
+                         "field. Not parsed, and not necessarily a VCF -- the caller "
+                         "passes the per-sample allelic-counts TSV that backs the call.")
     ap.add_argument("--sentieon-yaml", default="", help="optional Sentieon YAML to cross-check (reference, not truth)")
     ap.add_argument("--out-yaml", required=True)
     ap.add_argument("--out-crosscheck", required=True)

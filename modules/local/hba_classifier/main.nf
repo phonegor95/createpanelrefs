@@ -3,7 +3,9 @@ process HBA_CLASSIFIER {
     label 'process_single'
 
     // GATK (CollectAllelicCounts) + samtools + python3 (stdlib) + perl in one image.
-    container "${params.gatk_container ?: 'https://depot.galaxyproject.org/singularity/gatk4:4.6.1.0--py310hdfd78af_0'}"
+    container "${params.gatk_container ?: (workflow.containerEngine in ['singularity', 'apptainer']
+        ? 'https://depot.galaxyproject.org/singularity/gatk4:4.6.1.0--py310hdfd78af_0'
+        : 'biocontainers/gatk4:4.6.1.0--py310hdfd78af_0')}"
 
     input:
     tuple val(meta), path(cram), path(crai)

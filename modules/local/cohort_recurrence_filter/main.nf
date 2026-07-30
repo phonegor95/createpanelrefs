@@ -3,7 +3,7 @@ process COHORT_RECURRENCE_FILTER {
     label 'process_single'
 
     // python3 + bgzip/tabix in one image (htslib + pysam mulled biocontainer)
-    container "${workflow.containerEngine == 'singularity' && !task.ext.singularity_pull_docker_container
+    container "${workflow.containerEngine in ['singularity', 'apptainer']
         ? 'https://depot.galaxyproject.org/singularity/htslib_pysam_tabix_pip_variant-extractor:a12ef217eccf6ba8'
         : 'community.wave.seqera.io/library/htslib_pysam_tabix_pip_variant-extractor:a12ef217eccf6ba8'}"
 
@@ -27,6 +27,9 @@ process COHORT_RECURRENCE_FILTER {
     recip_threshold  = params.recur_recip_threshold  ?: 0.5
     recip_coverage   = params.recur_recip_coverage   ?: 0.5
     overlap_threshold = params.recur_overlap_threshold ?: 0.8
+    // Below this many peers per call the frequency is too quantised to act on;
+    // the filter degrades to a no-op instead of flagging near-arbitrarily.
+    min_cohort       = params.recur_min_cohort ?: 5
     template 'cohort_recurrence_filter.py'
 
     stub:
